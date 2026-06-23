@@ -35,19 +35,21 @@ function saveState(state) {
   writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
 }
 
-export async function login() {
-  if (existsSync(AUTH_FILE)) {
-    console.log('Using saved auth session');
-    return null;
-  }
+function randomDelay(page, min = 500, max = 2000) {
+  return page.waitForTimeout(Math.floor(Math.random() * (max - min)) + min);
+}
 
+export async function createSession() {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    storageState: existsSync(AUTH_FILE) ? AUTH_FILE : undefined,
   });
-  const page = await context.newPage();
+  return { browser, context };
+}
 
+export async function login(context, page) {
   try {
     console.log('Logging in to Twitter...');
     await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -94,7 +96,7 @@ export async function login() {
       }
     }
 
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(3000);
 
     await page.waitForSelector('div[data-testid="primaryColumn"]', { timeout: 30000 }).catch(() => {});
     await page.waitForTimeout(3000);
@@ -118,7 +120,7 @@ export async function login() {
     await page.waitForTimeout(2000);
 
     const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
-    await postBtn.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+    await postBtn.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
     console.log('Home page loaded, auth confirmed');
 
     await context.storageState({ path: AUTH_FILE });
@@ -127,39 +129,42 @@ export async function login() {
     console.error('Login failed:', err.message);
     await page.screenshot({ path: resolve(import.meta.dirname, '..', 'login-error.png') });
     throw err;
-  } finally {
-    await browser.close();
   }
 }
 
-async function getContext() {
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
-    viewport: { width: 1280, height: 900 },
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    storageState: AUTH_FILE,
-  });
-  return { browser, context };
+export async function ensureLoggedIn(context, page) {
+  if (!existsSync(AUTH_FILE)) return false;
+
+  try {
+    await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 25000 });
+    await page.waitForTimeout(5000);
+
+    const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
+    const visible = await postBtn.isVisible({ timeout: 10000 }).catch(() => false);
+    if (visible) {
+      console.log('Auth session valid');
+      return true;
+    }
+
+    console.log('Auth expired, re-logging in...');
+    rmSync(AUTH_FILE, { force: true });
+    await login(context, page);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-function randomDelay(page, min = 500, max = 2000) {
-  return page.waitForTimeout(Math.floor(Math.random() * (max - min)) + min);
-}
-
-export async function postTweet(text) {
-  const { browser, context } = await getContext();
-  const page = await context.newPage();
-
+export async function postTweet(context, page, text) {
   try {
     await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(5000);
 
     const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
-    if (!(await postBtn.isVisible({ timeout: 8000 }).catch(() => false))) {
-      console.log('Post button not visible, URL:', page.url());
+    if (!(await postBtn.isVisible({ timeout: 10000 }).catch(() => false))) {
       const html = await page.content();
-      const bodyText = html.substring(html.indexOf('<body'), html.indexOf('</body>') + 7);
-      console.log('Body:', bodyText.substring(0, 2000));
+      const match = html.match(/<body[^>]*>[\s\S]*?(?=<\/body>)/i);
+      console.log('Body snippet:', match?.[0]?.substring(0, 1500) || '(empty)');
       await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-page.png') });
       throw new Error('Post button not found - not logged in?');
     }
@@ -221,15 +226,10 @@ export async function postTweet(text) {
     console.error('Post failed:', err.message);
     await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-error.png') });
     return false;
-  } finally {
-    await browser.close();
   }
 }
 
-export async function engage(keywords) {
-  const { browser, context } = await getContext();
-  const page = await context.newPage();
-
+export async function engage(context, page, keywords) {
   try {
     const keyword = keywords[Math.floor(Math.random() * keywords.length)];
     console.log(`Searching for: ${keyword}`);
@@ -312,32 +312,5 @@ export async function engage(keywords) {
     console.error('Engage failed:', err.message);
     await page.screenshot({ path: resolve(import.meta.dirname, '..', 'engage-error.png') });
     return 0;
-  } finally {
-    await browser.close();
   }
-}
-
-export async function ensureLoggedIn() {
-  if (existsSync(AUTH_FILE)) {
-    try {
-      const { browser, context } = await getContext();
-      const page = await context.newPage();
-      await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 25000 });
-      await page.waitForTimeout(5000);
-
-      const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
-      const visible = await postBtn.isVisible({ timeout: 10000 }).catch(() => false);
-      await browser.close();
-      if (!visible) {
-        console.log('Auth expired, deleting stale auth...');
-        try { rmSync(AUTH_FILE); } catch {}
-        return false;
-      }
-      console.log('Auth session valid');
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  return false;
 }

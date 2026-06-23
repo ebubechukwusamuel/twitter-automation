@@ -1,5 +1,5 @@
-import { login, postTweet, engage, ensureLoggedIn } from './browser.js';
-import { generateTweet } from './ai.js';
+import { createSession, login, postTweet, ensureLoggedIn, engage } from './browser.js';
+import { generateTweet, getFallbackTweet } from './ai.js';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -25,26 +25,26 @@ function loadState() {
 async function main() {
   const state = loadState();
   const mode = process.argv[2] || 'both';
-  const forceLogin = process.argv.includes('--relogin');
 
   console.log(`Mode: ${mode}`);
   console.log(`Tweets posted so far: ${state.posted.length}`);
   console.log(`Tweets engaged with: ${state.engaged.length}`);
 
+  let session;
   try {
-    const loggedIn = await ensureLoggedIn();
-    if (!loggedIn || forceLogin) {
-      await login();
-    }
+    session = await createSession();
+    const { browser, context } = session;
+    const page = await context.newPage();
+
+    const loggedIn = await ensureLoggedIn(context, page);
 
     if (mode === 'post' || mode === 'both') {
       let text = await generateTweet();
       if (!text) {
-        const { getFallbackTweet } = await import('./ai.js');
         text = getFallbackTweet();
         console.log('Using fallback tweet (AI unavailable)');
       }
-      await postTweet(text);
+      await postTweet(context, page, text);
     }
 
     if (mode === 'engage' || mode === 'both') {
@@ -53,7 +53,7 @@ async function main() {
         : Infinity;
 
       if (hoursSinceEngage >= 2 || mode !== 'both') {
-        await engage(ENGAGEMENT_KEYWORDS);
+        await engage(context, page, ENGAGEMENT_KEYWORDS);
         state.lastEngage = new Date().toISOString();
         writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
       } else {
@@ -65,6 +65,8 @@ async function main() {
   } catch (err) {
     console.error('Error:', err.message);
     process.exit(1);
+  } finally {
+    if (session) await session.browser.close();
   }
 }
 

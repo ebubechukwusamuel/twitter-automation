@@ -132,14 +132,8 @@ export async function postTweet(text) {
   const page = await context.newPage();
 
   try {
-    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(5000);
-
-    const postBtn = page.locator('a[href="/compose/post"]');
-    if (await postBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await postBtn.click();
-      await page.waitForTimeout(3000);
-    }
+    await page.goto(`${BASE}/compose/post`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(6000);
 
     const textareaSelectors = [
       'div[data-testid="tweetTextarea_0"]',
@@ -155,9 +149,20 @@ export async function postTweet(text) {
     }
 
     if (!textarea) {
-      console.log('Page URL:', page.url());
-      await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-page.png') });
-      throw new Error('Could not find tweet compose area');
+      await page.goto(`${BASE}/intent/tweet?text=${encodeURIComponent(text)}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(5000);
+
+      for (const sel of textareaSelectors) {
+        textarea = page.locator(sel).first();
+        if (await textarea.isVisible({ timeout: 2000 }).catch(() => false)) break;
+        textarea = null;
+      }
+
+      if (!textarea) {
+        console.log('Page URL:', page.url());
+        await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-page.png') });
+        throw new Error('Could not find tweet compose area');
+      }
     }
 
     await textarea.click();

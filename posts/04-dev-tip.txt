@@ -1,0 +1,3 @@
+Hot take: most websites don't need a complex stack.
+
+Next.js + Tailwind + a lightweight CMS handles 90% of use cases. Stop over-engineering and ship faster.

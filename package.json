@@ -1,0 +1,12 @@
+{
+  "name": "twitter-automation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "twitter-api-v2": "^1.18.0"
+  }
+}

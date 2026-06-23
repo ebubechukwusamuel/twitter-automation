@@ -1,0 +1,43 @@
+name: Twitter Bot
+
+on:
+  schedule:
+    - cron: '0 6,8,10,12,14,16,18,20 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Mode: post, engage, or both'
+        default: 'both'
+        required: false
+
+jobs:
+  twitter-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm install
+
+      - name: Create .env.local
+        run: |
+          echo "CONSUMER_KEY=${{ secrets.CONSUMER_KEY }}" >> .env.local
+          echo "CONSUMER_KEY_SECRET=${{ secrets.CONSUMER_KEY_SECRET }}" >> .env.local
+          echo "ACCESS_TOKEN=${{ secrets.ACCESS_TOKEN }}" >> .env.local
+          echo "ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}" >> .env.local
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.local
+          echo "TWITTER_USERNAME=${{ secrets.TWITTER_USERNAME }}" >> .env.local
+
+      - run: node src/index.js ${{ inputs.mode || 'both' }}
+
+      - name: Commit state
+        run: |
+          git config user.name "Twitter Bot"
+          git config user.email "bot@ebube.dev"
+          git add state.json
+          git diff --staged --quiet || git commit -m "Update bot state"
+          git push

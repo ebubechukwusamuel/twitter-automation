@@ -145,18 +145,26 @@ export async function postTweet(text) {
 
   try {
     await page.goto('https://twitter.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(8000);
 
-    const textarea = page.locator('div[data-testid="tweetTextarea_0"]');
-    if (!(await textarea.isVisible({ timeout: 8000 }).catch(() => false))) {
-      const composerBtn = page.locator('a[href="/compose/post"]');
-      if (await composerBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await composerBtn.click();
-        await page.waitForTimeout(3000);
-      }
+    const textareaSelectors = [
+      'div[data-testid="tweetTextarea_0"]',
+      '[role="textbox"]',
+      'div[contenteditable="true"]',
+      'div[data-testid="tweetTextarea_1"]',
+    ];
+
+    let textarea = null;
+    for (const sel of textareaSelectors) {
+      textarea = page.locator(sel).first();
+      if (await textarea.isVisible({ timeout: 2000 }).catch(() => false)) break;
+      textarea = null;
     }
 
-    if (!(await textarea.isVisible({ timeout: 5000 }).catch(() => false))) {
+    if (!textarea) {
+      console.log('Page URL:', page.url());
+      console.log('Page HTML:', await page.evaluate(() => document.body.innerHTML.substring(0, 3000)));
+      await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-page.png') });
       throw new Error('Could not find tweet compose area');
     }
 
@@ -165,11 +173,23 @@ export async function postTweet(text) {
     await page.keyboard.type(text, { delay: 30 });
     await randomDelay(page, 1000, 1500);
 
-    const tweetBtn = page.locator('div[data-testid="tweetButtonInline"]');
-    if (!(await tweetBtn.isVisible({ timeout: 5000 }).catch(() => false))) {
-      await page.keyboard.press('Control+Enter');
-    } else {
+    const tweetBtnSelectors = [
+      'div[data-testid="tweetButtonInline"]',
+      'button:has-text("Post")',
+      'div[data-testid="tweetButton"]',
+    ];
+
+    let tweetBtn = null;
+    for (const sel of tweetBtnSelectors) {
+      tweetBtn = page.locator(sel).first();
+      if (await tweetBtn.isVisible({ timeout: 2000 }).catch(() => false)) break;
+      tweetBtn = null;
+    }
+
+    if (tweetBtn) {
       await tweetBtn.click();
+    } else {
+      await page.keyboard.press('Control+Enter');
     }
     await page.waitForTimeout(3000);
 

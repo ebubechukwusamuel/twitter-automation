@@ -49,9 +49,14 @@ export async function login() {
 
   try {
     console.log('Logging in to Twitter...');
-    await page.goto('https://twitter.com/i/flow/login', { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto('https://twitter.com/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(5000);
 
-    await page.waitForSelector('input[name="text"]', { timeout: 15000 });
+    const textInput = page.locator('input[name="text"]');
+    if (!(await textInput.isVisible({ timeout: 10000 }).catch(() => false))) {
+      await page.goto('https://twitter.com/i/flow/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(5000);
+    }
     await page.fill('input[name="text"]', USERNAME);
     await page.click('div[role="button"]:has-text("Next")');
     await page.waitForTimeout(2000);
@@ -109,8 +114,8 @@ export async function postTweet(text) {
   const page = await context.newPage();
 
   try {
-    await page.goto('https://twitter.com/compose/post', { waitUntil: 'networkidle', timeout: 30000 });
-    await randomDelay(page, 1000, 2000);
+    await page.goto('https://twitter.com/compose/post', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(4000);
 
     const textarea = page.locator('div[data-testid="tweetTextarea_0"]');
     await textarea.waitFor({ timeout: 10000 });
@@ -148,8 +153,8 @@ export async function engage(keywords) {
     const keyword = keywords[Math.floor(Math.random() * keywords.length)];
     console.log(`Searching for: ${keyword}`);
 
-    await page.goto(`https://twitter.com/search?q=${encodeURIComponent(keyword)}&src=typed_query`, { waitUntil: 'networkidle', timeout: 30000 });
-    await randomDelay(page, 2000, 3000);
+    await page.goto(`https://twitter.com/search?q=${encodeURIComponent(keyword)}&src=typed_query`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(4000);
 
     const tweets = page.locator('article[data-testid="tweet"]');
     const count = await tweets.count();
@@ -235,7 +240,8 @@ export async function ensureLoggedIn() {
     try {
       const { browser, context } = await getContext();
       const page = await context.newPage();
-      await page.goto('https://twitter.com/home', { waitUntil: 'networkidle', timeout: 20000 });
+      await page.goto('https://twitter.com/home', { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.waitForTimeout(3000);
       const url = page.url();
       await browser.close();
       if (url.includes('login')) {

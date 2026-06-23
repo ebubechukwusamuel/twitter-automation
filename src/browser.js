@@ -4,6 +4,7 @@ import { resolve } from 'path';
 
 const STATE_FILE = resolve(import.meta.dirname, '..', 'state.json');
 const AUTH_FILE = resolve(import.meta.dirname, '..', 'auth.json');
+const BASE = 'https://x.com';
 
 function loadEnv() {
   const env = {};
@@ -49,8 +50,8 @@ export async function login() {
 
   try {
     console.log('Logging in to Twitter...');
-    await page.goto('https://twitter.com/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(5000);
+    await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(6000);
 
     const inputSelectors = [
       'input[autocomplete="username"]',
@@ -68,41 +69,28 @@ export async function login() {
 
     if (!textInput) {
       console.log('Page URL:', page.url());
-      console.log('Page HTML:', await page.evaluate(() => document.body.innerHTML.substring(0, 2000)));
       await page.screenshot({ path: resolve(import.meta.dirname, '..', 'login-page.png') });
-
-      await page.goto('https://twitter.com/i/flow/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(5000);
-
-      for (const sel of inputSelectors) {
-        textInput = page.locator(sel).first();
-        if (await textInput.isVisible({ timeout: 3000 }).catch(() => false)) break;
-        textInput = null;
-      }
-
-      if (!textInput) {
-        console.log('Flow page URL:', page.url());
-        console.log('Flow page HTML:', await page.evaluate(() => document.body.innerHTML.substring(0, 2000)));
-        throw new Error('Could not find username input on either login page');
-      }
+      throw new Error('Could not find username input');
     }
+
     await textInput.fill(USERNAME);
     await page.waitForTimeout(1000);
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
 
     const passwordInput = page.locator('input[name="password"]');
     if (await passwordInput.isVisible({ timeout: 5000 }).catch(() => false)) {
       await passwordInput.fill(PASSWORD);
-      await page.click('div[data-testid="LoginForm_Login_Button"]');
+      await page.waitForTimeout(500);
+      await page.keyboard.press('Enter');
     } else {
-      const textInput = page.locator('input[name="text"]');
-      if (await textInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await textInput.fill(env.TWITTER_EMAIL || '');
-        await page.click('div[role="button"]:has-text("Next")');
-        await page.waitForTimeout(2000);
+      const textInput2 = page.locator('input[type="email"]');
+      if (await textInput2.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await textInput2.fill(env.TWITTER_EMAIL || USERNAME);
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(3000);
         await page.locator('input[name="password"]').fill(PASSWORD);
-        await page.click('div[data-testid="LoginForm_Login_Button"]');
+        await page.keyboard.press('Enter');
       }
     }
 
@@ -144,14 +132,19 @@ export async function postTweet(text) {
   const page = await context.newPage();
 
   try {
-    await page.goto('https://twitter.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(8000);
+    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(5000);
+
+    const postBtn = page.locator('a[href="/compose/post"]');
+    if (await postBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await postBtn.click();
+      await page.waitForTimeout(3000);
+    }
 
     const textareaSelectors = [
       'div[data-testid="tweetTextarea_0"]',
       '[role="textbox"]',
       'div[contenteditable="true"]',
-      'div[data-testid="tweetTextarea_1"]',
     ];
 
     let textarea = null;
@@ -163,7 +156,6 @@ export async function postTweet(text) {
 
     if (!textarea) {
       console.log('Page URL:', page.url());
-      console.log('Page HTML:', await page.evaluate(() => document.body.innerHTML.substring(0, 3000)));
       await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-page.png') });
       throw new Error('Could not find tweet compose area');
     }
@@ -191,8 +183,8 @@ export async function postTweet(text) {
     } else {
       await page.keyboard.press('Control+Enter');
     }
-    await page.waitForTimeout(3000);
 
+    await page.waitForTimeout(3000);
     console.log(`Posted: ${text}`);
 
     const state = loadState();
@@ -217,8 +209,8 @@ export async function engage(keywords) {
     const keyword = keywords[Math.floor(Math.random() * keywords.length)];
     console.log(`Searching for: ${keyword}`);
 
-    await page.goto(`https://twitter.com/search?q=${encodeURIComponent(keyword)}&src=typed_query`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(4000);
+    await page.goto(`${BASE}/search?q=${encodeURIComponent(keyword)}&src=typed_query`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(5000);
 
     const tweets = page.locator('article[data-testid="tweet"]');
     const count = await tweets.count();
@@ -254,7 +246,8 @@ export async function engage(keywords) {
 
           const replyArea = page.locator('div[data-testid="tweetTextarea_0"]');
           if (await replyArea.isVisible({ timeout: 3000 }).catch(() => false)) {
-            const tweetText = await tweet.locator('div[data-testid="tweetText"]').innerText();
+            const tweetTextEl = tweet.locator('div[data-testid="tweetText"]');
+            const tweetText = (await tweetTextEl.innerText().catch(() => '')) || '';
             console.log(`Replying to: ${tweetText.substring(0, 80)}...`);
 
             const { generateReply, getFallbackReply } = await import('./ai.js');
@@ -304,7 +297,7 @@ export async function ensureLoggedIn() {
     try {
       const { browser, context } = await getContext();
       const page = await context.newPage();
-      await page.goto('https://twitter.com/home', { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.goto(`${BASE}/home`, { waitUntil: 'domcontentloaded', timeout: 20000 });
       await page.waitForTimeout(3000);
       const url = page.url();
       await browser.close();

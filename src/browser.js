@@ -52,13 +52,42 @@ export async function login() {
     await page.goto('https://twitter.com/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(5000);
 
-    const textInput = page.locator('input[name="text"]');
-    if (!(await textInput.isVisible({ timeout: 10000 }).catch(() => false))) {
+    const inputSelectors = [
+      'input[autocomplete="username"]',
+      'input[name="text"]',
+      'input[type="text"]',
+    ];
+
+    let textInput = null;
+    for (const sel of inputSelectors) {
+      textInput = page.locator(sel).first();
+      if (await textInput.isVisible({ timeout: 3000 }).catch(() => false)) break;
+      textInput = null;
+    }
+
+    if (!textInput) {
+      console.log('Page URL:', page.url());
+      console.log('Page HTML:', await page.evaluate(() => document.body.innerHTML.substring(0, 2000)));
+      await page.screenshot({ path: resolve(import.meta.dirname, '..', 'login-page.png') });
+
       await page.goto('https://twitter.com/i/flow/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(5000);
+
+      for (const sel of inputSelectors) {
+        textInput = page.locator(sel).first();
+        if (await textInput.isVisible({ timeout: 3000 }).catch(() => false)) break;
+        textInput = null;
+      }
+
+      if (!textInput) {
+        console.log('Flow page URL:', page.url());
+        console.log('Flow page HTML:', await page.evaluate(() => document.body.innerHTML.substring(0, 2000)));
+        throw new Error('Could not find username input on either login page');
+      }
     }
-    await page.fill('input[name="text"]', USERNAME);
-    await page.click('div[role="button"]:has-text("Next")');
+    await textInput.fill(USERNAME);
+    await page.waitForTimeout(1000);
+    await page.keyboard.press('Enter');
     await page.waitForTimeout(2000);
 
     const passwordInput = page.locator('input[name="password"]');

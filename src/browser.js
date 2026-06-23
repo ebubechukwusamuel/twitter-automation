@@ -55,6 +55,7 @@ export async function login() {
     const inputSelectors = [
       'input[autocomplete="username"]',
       'input[name="text"]',
+      'input[type="email"]',
       'input[type="text"]',
     ];
 
@@ -143,19 +144,33 @@ export async function postTweet(text) {
   const page = await context.newPage();
 
   try {
-    await page.goto('https://twitter.com/compose/post', { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(4000);
+    await page.goto('https://twitter.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(5000);
 
     const textarea = page.locator('div[data-testid="tweetTextarea_0"]');
-    await textarea.waitFor({ timeout: 10000 });
+    if (!(await textarea.isVisible({ timeout: 8000 }).catch(() => false))) {
+      const composerBtn = page.locator('a[href="/compose/post"]');
+      if (await composerBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await composerBtn.click();
+        await page.waitForTimeout(3000);
+      }
+    }
+
+    if (!(await textarea.isVisible({ timeout: 5000 }).catch(() => false))) {
+      throw new Error('Could not find tweet compose area');
+    }
+
     await textarea.click();
-    await randomDelay(page, 300, 800);
-    await page.keyboard.type(text, { delay: 30 });
     await randomDelay(page, 500, 1000);
+    await page.keyboard.type(text, { delay: 30 });
+    await randomDelay(page, 1000, 1500);
 
     const tweetBtn = page.locator('div[data-testid="tweetButtonInline"]');
-    await tweetBtn.waitFor({ timeout: 5000 });
-    await tweetBtn.click();
+    if (!(await tweetBtn.isVisible({ timeout: 5000 }).catch(() => false))) {
+      await page.keyboard.press('Control+Enter');
+    } else {
+      await tweetBtn.click();
+    }
     await page.waitForTimeout(3000);
 
     console.log(`Posted: ${text}`);

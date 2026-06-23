@@ -96,11 +96,30 @@ export async function login() {
 
     await page.waitForTimeout(5000);
 
-    const dismissBtn = page.locator('button:has-text("Skip")');
-    if (await dismissBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await dismissBtn.click();
-      await page.waitForTimeout(2000);
+    await page.waitForSelector('div[data-testid="primaryColumn"]', { timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(3000);
+
+    for (let i = 0; i < 5; i++) {
+      const modal = page.locator('div[role="dialog"]');
+      if (await modal.isVisible({ timeout: 2000 }).catch(() => false)) {
+        const nextBtn = modal.locator('button:has-text("Next"), button:has-text("Skip"), button:has-text("Close")');
+        if (await nextBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await nextBtn.click();
+          await page.waitForTimeout(1500);
+        }
+        const dismissBtn = modal.locator('button:has-text("Not now"), button:has-text("Maybe later")');
+        if (await dismissBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await dismissBtn.click();
+          await page.waitForTimeout(1500);
+        }
+      }
     }
+
+    await page.waitForTimeout(2000);
+
+    const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
+    await postBtn.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+    console.log('Home page loaded, auth confirmed');
 
     await context.storageState({ path: AUTH_FILE });
     console.log('Auth saved to', AUTH_FILE);
@@ -132,8 +151,17 @@ export async function postTweet(text) {
   const page = await context.newPage();
 
   try {
-    await page.goto(`${BASE}/compose/post`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(6000);
+    await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(5000);
+
+    const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
+    if (!(await postBtn.isVisible({ timeout: 8000 }).catch(() => false))) {
+      console.log('Post button not visible, URL:', page.url());
+      await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-page.png') });
+      throw new Error('Post button not found - not logged in?');
+    }
+    await postBtn.click();
+    await page.waitForTimeout(3000);
 
     const textareaSelectors = [
       'div[data-testid="tweetTextarea_0"]',
@@ -144,25 +172,14 @@ export async function postTweet(text) {
     let textarea = null;
     for (const sel of textareaSelectors) {
       textarea = page.locator(sel).first();
-      if (await textarea.isVisible({ timeout: 2000 }).catch(() => false)) break;
+      if (await textarea.isVisible({ timeout: 3000 }).catch(() => false)) break;
       textarea = null;
     }
 
     if (!textarea) {
-      await page.goto(`${BASE}/intent/tweet?text=${encodeURIComponent(text)}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(5000);
-
-      for (const sel of textareaSelectors) {
-        textarea = page.locator(sel).first();
-        if (await textarea.isVisible({ timeout: 2000 }).catch(() => false)) break;
-        textarea = null;
-      }
-
-      if (!textarea) {
-        console.log('Page URL:', page.url());
-        await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-page.png') });
-        throw new Error('Could not find tweet compose area');
-      }
+      console.log('Page URL:', page.url());
+      await page.screenshot({ path: resolve(import.meta.dirname, '..', 'compose-modal.png') });
+      throw new Error('Could not find tweet compose area');
     }
 
     await textarea.click();
@@ -302,11 +319,13 @@ export async function ensureLoggedIn() {
     try {
       const { browser, context } = await getContext();
       const page = await context.newPage();
-      await page.goto(`${BASE}/home`, { waitUntil: 'domcontentloaded', timeout: 20000 });
-      await page.waitForTimeout(3000);
-      const url = page.url();
+      await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 25000 });
+      await page.waitForTimeout(5000);
+
+      const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
+      const visible = await postBtn.isVisible({ timeout: 10000 }).catch(() => false);
       await browser.close();
-      if (url.includes('login')) {
+      if (!visible) {
         console.log('Auth expired, re-logging in...');
         return false;
       }

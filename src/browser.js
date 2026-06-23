@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, rmSync } from 'fs';
 import { resolve } from 'path';
 
 const STATE_FILE = resolve(import.meta.dirname, '..', 'state.json');
@@ -157,6 +157,9 @@ export async function postTweet(text) {
     const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
     if (!(await postBtn.isVisible({ timeout: 8000 }).catch(() => false))) {
       console.log('Post button not visible, URL:', page.url());
+      const html = await page.content();
+      const bodyText = html.substring(html.indexOf('<body'), html.indexOf('</body>') + 7);
+      console.log('Body:', bodyText.substring(0, 2000));
       await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-page.png') });
       throw new Error('Post button not found - not logged in?');
     }
@@ -326,7 +329,8 @@ export async function ensureLoggedIn() {
       const visible = await postBtn.isVisible({ timeout: 10000 }).catch(() => false);
       await browser.close();
       if (!visible) {
-        console.log('Auth expired, re-logging in...');
+        console.log('Auth expired, deleting stale auth...');
+        try { rmSync(AUTH_FILE); } catch {}
         return false;
       }
       console.log('Auth session valid');

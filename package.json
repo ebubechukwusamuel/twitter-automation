@@ -7,6 +7,6 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "twitter-api-v2": "^1.18.0"
+    "playwright": "^1.52.0"
   }
 }

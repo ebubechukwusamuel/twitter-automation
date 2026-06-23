@@ -1,10 +1,21 @@
-import { postTweet, engage } from './twitter.js';
+import { login, postTweet, engage, ensureLoggedIn } from './browser.js';
+import { generateTweet } from './ai.js';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve } from 'path';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const STATE_FILE = resolve(__dirname, '..', 'state.json');
+const STATE_FILE = resolve(import.meta.dirname, '..', 'state.json');
+const ENGAGEMENT_KEYWORDS = [
+  'freelance designer',
+  'UI UX design',
+  'brand identity design',
+  'web design freelance',
+  'logo design',
+  'mobile app design',
+  'building in public design',
+  'designer life',
+  'design portfolio',
+  'freelance web developer',
+];
 
 function loadState() {
   if (!existsSync(STATE_FILE)) return { posted: [], engaged: [], lastEngage: null };
@@ -14,14 +25,26 @@ function loadState() {
 async function main() {
   const state = loadState();
   const mode = process.argv[2] || 'both';
+  const forceLogin = process.argv.includes('--relogin');
 
   console.log(`Mode: ${mode}`);
   console.log(`Tweets posted so far: ${state.posted.length}`);
   console.log(`Tweets engaged with: ${state.engaged.length}`);
 
   try {
+    const loggedIn = await ensureLoggedIn();
+    if (!loggedIn || forceLogin) {
+      await login();
+    }
+
     if (mode === 'post' || mode === 'both') {
-      await postTweet();
+      let text = await generateTweet();
+      if (!text) {
+        const { getFallbackTweet } = await import('./ai.js');
+        text = getFallbackTweet();
+        console.log('Using fallback tweet (AI unavailable)');
+      }
+      await postTweet(text);
     }
 
     if (mode === 'engage' || mode === 'both') {
@@ -30,7 +53,7 @@ async function main() {
         : Infinity;
 
       if (hoursSinceEngage >= 2 || mode !== 'both') {
-        await engage();
+        await engage(ENGAGEMENT_KEYWORDS);
         state.lastEngage = new Date().toISOString();
         writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
       } else {

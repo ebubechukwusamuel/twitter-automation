@@ -10,6 +10,11 @@ on:
         default: 'both'
         required: false
 
+env:
+  TWITTER_USERNAME: ${{ secrets.TWITTER_USERNAME }}
+  TWITTER_PASSWORD: ${{ secrets.TWITTER_PASSWORD }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
 jobs:
   twitter-bot:
     runs-on: ubuntu-latest
@@ -21,18 +26,18 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Restore auth cache
+        id: auth-cache
+        uses: actions/cache@v4
+        with:
+          path: auth.json
+          key: twitter-auth-v1
+
       - run: npm install
+      - run: npx playwright install --with-deps chromium
 
-      - name: Create .env.local
-        run: |
-          echo "CONSUMER_KEY=${{ secrets.CONSUMER_KEY }}" >> .env.local
-          echo "CONSUMER_KEY_SECRET=${{ secrets.CONSUMER_KEY_SECRET }}" >> .env.local
-          echo "ACCESS_TOKEN=${{ secrets.ACCESS_TOKEN }}" >> .env.local
-          echo "ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}" >> .env.local
-          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.local
-          echo "TWITTER_USERNAME=${{ secrets.TWITTER_USERNAME }}" >> .env.local
-
-      - run: node src/index.js ${{ inputs.mode || 'both' }}
+      - name: Run bot
+        run: node src/index.js ${{ inputs.mode || 'both' }}
 
       - name: Commit state
         run: |

@@ -3,14 +3,16 @@ import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 
 function loadEnv() {
-  const envPath = resolve(import.meta.dirname, '..', '.env.local');
-  if (!existsSync(envPath)) return {};
-  const lines = readFileSync(envPath, 'utf-8').split('\n').filter(Boolean);
   const env = {};
-  for (const line of lines) {
-    const [key, ...rest] = line.split('=');
-    env[key.trim()] = rest.join('=').trim();
+  const envPath = resolve(import.meta.dirname, '..', '.env.local');
+  if (existsSync(envPath)) {
+    const lines = readFileSync(envPath, 'utf-8').split('\n').filter(Boolean);
+    for (const line of lines) {
+      const [key, ...rest] = line.split('=');
+      env[key.trim()] = rest.join('=').trim();
+    }
   }
+  if (process.env.GEMINI_API_KEY) env.GEMINI_API_KEY = process.env.GEMINI_API_KEY;
   return env;
 }
 

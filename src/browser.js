@@ -122,7 +122,7 @@ export async function login(context, page) {
 
     await page.waitForTimeout(2000);
 
-    await page.goto(`${BASE}/home`, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+    await page.goto(`${BASE}/home`, { waitUntil: 'load', timeout: 30000 }).catch(() => {});
     await page.waitForTimeout(3000);
 
     const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
@@ -142,7 +142,8 @@ export async function ensureLoggedIn(context, page) {
   if (!existsSync(AUTH_FILE)) return false;
 
   try {
-    await page.goto(`${BASE}/home`, { waitUntil: 'networkidle', timeout: 60000 });
+    await page.goto(`${BASE}/home`, { waitUntil: 'load', timeout: 30000 });
+    await page.waitForSelector('div[data-testid="primaryColumn"]', { timeout: 15000 }).catch(() => {});
     await page.waitForTimeout(3000);
 
     const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
@@ -163,7 +164,8 @@ export async function ensureLoggedIn(context, page) {
 
 export async function postTweet(context, page, text) {
   try {
-    await page.goto(`${BASE}/home`, { waitUntil: 'networkidle', timeout: 60000 });
+    await page.goto(`${BASE}/home`, { waitUntil: 'load', timeout: 30000 });
+    await page.waitForSelector('div[data-testid="primaryColumn"]', { timeout: 15000 }).catch(() => {});
     await page.waitForTimeout(3000);
 
     const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');

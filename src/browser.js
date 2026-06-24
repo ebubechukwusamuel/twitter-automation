@@ -40,11 +40,17 @@ function randomDelay(page, min = 500, max = 2000) {
 }
 
 export async function createSession() {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
+  });
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     storageState: existsSync(AUTH_FILE) ? AUTH_FILE : undefined,
+  });
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
   });
   return { browser, context };
 }
@@ -119,6 +125,9 @@ export async function login(context, page) {
 
     await page.waitForTimeout(2000);
 
+    await page.goto(`${BASE}/home`, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(3000);
+
     const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
     await postBtn.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
     console.log('Home page loaded, auth confirmed');
@@ -136,7 +145,7 @@ export async function ensureLoggedIn(context, page) {
   if (!existsSync(AUTH_FILE)) return false;
 
   try {
-    await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 25000 });
+    await page.goto(`${BASE}/home`, { waitUntil: 'domcontentloaded', timeout: 25000 });
     await page.waitForTimeout(5000);
 
     const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
@@ -157,14 +166,14 @@ export async function ensureLoggedIn(context, page) {
 
 export async function postTweet(context, page, text) {
   try {
-    await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(5000);
+    await page.goto(`${BASE}/home`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(8000);
 
     const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
     if (!(await postBtn.isVisible({ timeout: 10000 }).catch(() => false))) {
       const html = await page.content();
       const match = html.match(/<body[^>]*>[\s\S]*?(?=<\/body>)/i);
-      console.log('Body snippet:', match?.[0]?.substring(0, 1500) || '(empty)');
+      console.log('Body snippet:', match?.[0]?.substring(0, 2000) || '(empty)');
       await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-page.png') });
       throw new Error('Post button not found - not logged in?');
     }

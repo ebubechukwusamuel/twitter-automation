@@ -103,17 +103,54 @@ export async function login(context, page) {
 
     console.log('Login submitted, URL:', page.url());
 
+    if (page.url().includes('onboarding')) {
+      console.log('Onboarding page detected, attempting to proceed...');
+      for (let i = 0; i < 10; i++) {
+        const url = page.url();
+        if (!url.includes('onboarding') && !url.includes('login')) {
+          console.log('Left onboarding, URL:', url);
+          break;
+        }
+
+        const nextBtn = page.locator('button:has-text("Next"), button:has-text("Continue"), button:has-text("Confirm")');
+        const skipBtn = page.locator('button:has-text("Skip"), button:has-text("Not now"), button:has-text("Maybe later")');
+        const dismissBtn = page.locator('a[role="link"]:has-text("Skip"), span:has-text("Skip")');
+
+        let clicked = false;
+        for (const btn of [nextBtn, skipBtn, dismissBtn]) {
+          if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await btn.click();
+            console.log('Clicked button on onboarding page');
+            await page.waitForTimeout(2000);
+            clicked = true;
+            break;
+          }
+        }
+
+        if (!clicked) {
+          console.log('No buttons found on onboarding page, waiting...');
+          const bodyText = await page.evaluate(() => document.body.innerText.substring(0, 500));
+          console.log('Onboarding text:', bodyText);
+          await page.waitForTimeout(5000);
+        }
+
+        if (i === 9) console.log('Exhausted onboarding attempts');
+      }
+    }
+
+    console.log('After onboarding, URL:', page.url());
+
     const primaryCol = page.locator('div[data-testid="primaryColumn"]');
-    await primaryCol.waitFor({ state: 'visible', timeout: 45000 });
+    await primaryCol.waitFor({ state: 'visible', timeout: 30000 });
     console.log('Timeline visible');
 
     for (let i = 0; i < 5; i++) {
       const modal = page.locator('div[role="dialog"]');
       if (await modal.isVisible({ timeout: 3000 }).catch(() => false)) {
         console.log('Dismissing dialog...');
-        const nextBtn = modal.locator('button:has-text("Next"), button:has-text("Skip"), button:has-text("Close"), button:has-text("Not now")');
-        if (await nextBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await nextBtn.click();
+        const dismissBtn = modal.locator('button:has-text("Skip"), button:has-text("Not now"), button:has-text("Close")');
+        if (await dismissBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await dismissBtn.click();
           await page.waitForTimeout(1500);
         }
       } else break;
@@ -141,15 +178,11 @@ export async function ensureLoggedIn(context, page) {
       await page.goto(`${BASE}/home`, { waitUntil: 'load', timeout: 45000 });
       const primaryCol = page.locator('div[data-testid="primaryColumn"]');
       await primaryCol.waitFor({ state: 'visible', timeout: 30000 });
-      const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"]');
-      await postBtn.waitFor({ state: 'visible', timeout: 15000 });
       console.log('Auth session valid');
       return true;
     } catch (err) {
-      console.log('Saved auth expired:', err.message);
+      console.log('Saved auth expired or needs re-auth:', err.message.substring(0, 100));
       rmSync(AUTH_FILE, { force: true });
-      await login(context, page);
-      return true;
     }
   }
 

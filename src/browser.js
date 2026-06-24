@@ -164,17 +164,22 @@ export async function ensureLoggedIn(context, page) {
 
 export async function postTweet(context, page, text) {
   try {
-    await page.goto(`${BASE}/home`, { waitUntil: 'load', timeout: 30000 });
-    await page.waitForSelector('div[data-testid="primaryColumn"]', { timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(3000);
+    console.log('Current URL:', page.url());
 
-    const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
-    if (!(await postBtn.isVisible({ timeout: 10000 }).catch(() => false))) {
+    const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"]');
+    if (!(await postBtn.isVisible({ timeout: 15000 }).catch(() => false))) {
+      console.log('Post button not found, trying navigate to /home...');
+      await page.goto(`${BASE}/home`, { waitUntil: 'load', timeout: 30000 }).catch(() => {});
+      await page.waitForTimeout(5000);
+    }
+
+    if (!(await postBtn.isVisible({ timeout: 15000 }).catch(() => false))) {
       const html = await page.content();
-      const match = html.match(/<body[^>]*>[\s\S]*?(?=<\/body>)/i);
-      console.log('Body snippet:', match?.[0]?.substring(0, 2000) || '(empty)');
+      console.log('Post button not found, URL:', page.url());
+      const bodyHtml = html.match(/<body[^>]*>[\s\S]*?<\/body>/i);
+      console.log('Body:', bodyHtml?.[0]?.substring(0, 1000) || '(n/a)');
       await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-page.png') });
-      throw new Error('Post button not found - not logged in?');
+      throw new Error('Post button not found');
     }
     await postBtn.click();
     await page.waitForTimeout(3000);

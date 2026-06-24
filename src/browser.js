@@ -174,15 +174,18 @@ export async function postTweet(context, page, text) {
     }
 
     if (!(await postBtn.isVisible({ timeout: 15000 }).catch(() => false))) {
-      const html = await page.content();
-      console.log('Post button not found, URL:', page.url());
-      const bodyHtml = html.match(/<body[^>]*>[\s\S]*?<\/body>/is);
-      const fullBody = bodyHtml?.[0] || '';
-      console.log('Body length:', fullBody.length, 'chars');
-      const reactRoot = html.match(/<div[^>]*id="react-root"[^>]*>[\s\S]*?<\/div>\s*<\/div>/i);
-      console.log('React root:', reactRoot ? reactRoot[0].substring(0, 500) : '(empty or noscript)');
-      const allText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      console.log('Text visible:', allText.substring(0, 500));
+      console.log('Post button (SideNav) not found, URL:', page.url());
+      const testids = await page.evaluate(() =>
+        [...document.querySelectorAll('[data-testid]')].map(el => el.getAttribute('data-testid'))
+      );
+      console.log('All data-testids:', JSON.stringify(testids));
+
+      const postElements = await page.evaluate(() =>
+        [...document.querySelectorAll('[aria-label*="Post" i], button:not([style*="display:none"]):not([style*="hidden"])')]
+          .map(el => `${el.tagName} aria-label="${el.getAttribute('aria-label')}" visible=${el.offsetParent !== null}`)
+      );
+      console.log('Post elements:', JSON.stringify(postElements));
+
       await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-page.png') });
       throw new Error('Post button not found');
     }

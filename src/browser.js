@@ -42,7 +42,7 @@ function randomDelay(page, min = 500, max = 2000) {
 export async function createSession() {
   const browser = await chromium.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
+    args: ['--no-sandbox'],
   });
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
@@ -176,8 +176,13 @@ export async function postTweet(context, page, text) {
     if (!(await postBtn.isVisible({ timeout: 15000 }).catch(() => false))) {
       const html = await page.content();
       console.log('Post button not found, URL:', page.url());
-      const bodyHtml = html.match(/<body[^>]*>[\s\S]*?<\/body>/i);
-      console.log('Body:', bodyHtml?.[0]?.substring(0, 1000) || '(n/a)');
+      const bodyHtml = html.match(/<body[^>]*>[\s\S]*?<\/body>/is);
+      const fullBody = bodyHtml?.[0] || '';
+      console.log('Body length:', fullBody.length, 'chars');
+      const reactRoot = html.match(/<div[^>]*id="react-root"[^>]*>[\s\S]*?<\/div>\s*<\/div>/i);
+      console.log('React root:', reactRoot ? reactRoot[0].substring(0, 500) : '(empty or noscript)');
+      const allText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      console.log('Text visible:', allText.substring(0, 500));
       await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-page.png') });
       throw new Error('Post button not found');
     }

@@ -49,9 +49,6 @@ export async function createSession() {
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     storageState: existsSync(AUTH_FILE) ? AUTH_FILE : undefined,
   });
-  await context.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-  });
   return { browser, context };
 }
 
@@ -125,7 +122,7 @@ export async function login(context, page) {
 
     await page.waitForTimeout(2000);
 
-    await page.goto(`${BASE}/home`, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
+    await page.goto(`${BASE}/home`, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
     await page.waitForTimeout(3000);
 
     const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
@@ -145,8 +142,8 @@ export async function ensureLoggedIn(context, page) {
   if (!existsSync(AUTH_FILE)) return false;
 
   try {
-    await page.goto(`${BASE}/home`, { waitUntil: 'domcontentloaded', timeout: 25000 });
-    await page.waitForTimeout(5000);
+    await page.goto(`${BASE}/home`, { waitUntil: 'networkidle', timeout: 60000 });
+    await page.waitForTimeout(3000);
 
     const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
     const visible = await postBtn.isVisible({ timeout: 10000 }).catch(() => false);
@@ -166,8 +163,8 @@ export async function ensureLoggedIn(context, page) {
 
 export async function postTweet(context, page, text) {
   try {
-    await page.goto(`${BASE}/home`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(8000);
+    await page.goto(`${BASE}/home`, { waitUntil: 'networkidle', timeout: 60000 });
+    await page.waitForTimeout(3000);
 
     const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
     if (!(await postBtn.isVisible({ timeout: 10000 }).catch(() => false))) {

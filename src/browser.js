@@ -101,33 +101,29 @@ export async function login(context, page) {
 
     await page.waitForTimeout(3000);
 
-    await page.waitForSelector('div[data-testid="primaryColumn"]', { timeout: 30000 }).catch(() => {});
-    await page.waitForTimeout(3000);
+    console.log('Login submitted, URL:', page.url());
+
+    const primaryCol = page.locator('div[data-testid="primaryColumn"]');
+    await primaryCol.waitFor({ state: 'visible', timeout: 45000 });
+    console.log('Timeline visible');
 
     for (let i = 0; i < 5; i++) {
       const modal = page.locator('div[role="dialog"]');
-      if (await modal.isVisible({ timeout: 2000 }).catch(() => false)) {
-        const nextBtn = modal.locator('button:has-text("Next"), button:has-text("Skip"), button:has-text("Close")');
+      if (await modal.isVisible({ timeout: 3000 }).catch(() => false)) {
+        console.log('Dismissing dialog...');
+        const nextBtn = modal.locator('button:has-text("Next"), button:has-text("Skip"), button:has-text("Close"), button:has-text("Not now")');
         if (await nextBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
           await nextBtn.click();
           await page.waitForTimeout(1500);
         }
-        const dismissBtn = modal.locator('button:has-text("Not now"), button:has-text("Maybe later")');
-        if (await dismissBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await dismissBtn.click();
-          await page.waitForTimeout(1500);
-        }
-      }
+      } else break;
     }
 
-    await page.waitForTimeout(2000);
-
-    await page.goto(`${BASE}/home`, { waitUntil: 'load', timeout: 30000 }).catch(() => {});
-    await page.waitForTimeout(3000);
+    console.log('Current URL:', page.url());
 
     const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
-    await postBtn.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
-    console.log('Home page loaded, auth confirmed');
+    await postBtn.waitFor({ state: 'visible', timeout: 15000 });
+    console.log('Post button visible, auth confirmed');
 
     await context.storageState({ path: AUTH_FILE });
     console.log('Auth saved to', AUTH_FILE);
@@ -139,27 +135,26 @@ export async function login(context, page) {
 }
 
 export async function ensureLoggedIn(context, page) {
-  if (!existsSync(AUTH_FILE)) return false;
-
-  try {
-    await page.goto(`${BASE}/home`, { waitUntil: 'load', timeout: 30000 });
-    await page.waitForSelector('div[data-testid="primaryColumn"]', { timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(3000);
-
-    const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"], a[aria-label="Post"]');
-    const visible = await postBtn.isVisible({ timeout: 10000 }).catch(() => false);
-    if (visible) {
+  if (existsSync(AUTH_FILE)) {
+    try {
+      console.log('Restoring saved auth session');
+      await page.goto(`${BASE}/home`, { waitUntil: 'load', timeout: 45000 });
+      const primaryCol = page.locator('div[data-testid="primaryColumn"]');
+      await primaryCol.waitFor({ state: 'visible', timeout: 30000 });
+      const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"]');
+      await postBtn.waitFor({ state: 'visible', timeout: 15000 });
       console.log('Auth session valid');
       return true;
+    } catch (err) {
+      console.log('Saved auth expired:', err.message);
+      rmSync(AUTH_FILE, { force: true });
+      await login(context, page);
+      return true;
     }
-
-    console.log('Auth expired, re-logging in...');
-    rmSync(AUTH_FILE, { force: true });
-    await login(context, page);
-    return true;
-  } catch {
-    return false;
   }
+
+  await login(context, page);
+  return true;
 }
 
 export async function postTweet(context, page, text) {
@@ -167,28 +162,8 @@ export async function postTweet(context, page, text) {
     console.log('Current URL:', page.url());
 
     const postBtn = page.locator('a[data-testid="SideNav_NewTweet_Button"]');
-    if (!(await postBtn.isVisible({ timeout: 15000 }).catch(() => false))) {
-      console.log('Post button not found, trying navigate to /home...');
-      await page.goto(`${BASE}/home`, { waitUntil: 'load', timeout: 30000 }).catch(() => {});
-      await page.waitForTimeout(5000);
-    }
-
-    if (!(await postBtn.isVisible({ timeout: 15000 }).catch(() => false))) {
-      console.log('Post button (SideNav) not found, URL:', page.url());
-      const testids = await page.evaluate(() =>
-        [...document.querySelectorAll('[data-testid]')].map(el => el.getAttribute('data-testid'))
-      );
-      console.log('All data-testids:', JSON.stringify(testids));
-
-      const postElements = await page.evaluate(() =>
-        [...document.querySelectorAll('[aria-label*="Post" i], button:not([style*="display:none"]):not([style*="hidden"])')]
-          .map(el => `${el.tagName} aria-label="${el.getAttribute('aria-label')}" visible=${el.offsetParent !== null}`)
-      );
-      console.log('Post elements:', JSON.stringify(postElements));
-
-      await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-page.png') });
-      throw new Error('Post button not found');
-    }
+    await postBtn.waitFor({ state: 'visible', timeout: 20000 });
+    console.log('Post button found');
     await postBtn.click();
     await page.waitForTimeout(3000);
 

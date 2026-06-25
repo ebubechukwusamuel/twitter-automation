@@ -34,11 +34,16 @@ jobs:
           path: auth.json
           key: twitter-auth-v1
 
-      - name: Decode auth session from secret (overrides expired cache)
-        if: ${{ secrets.AUTH_JSON != '' }}
+      - name: Decode auth session from secret
         env:
           AUTH_JSON: ${{ secrets.AUTH_JSON }}
-        run: echo "$AUTH_JSON" | base64 -d > auth.json
+        run: |
+          if [ -n "$AUTH_JSON" ]; then
+            echo "$AUTH_JSON" | base64 -d > auth.json
+            echo "Auth session decoded from secret"
+          else
+            echo "No AUTH_JSON secret available"
+          fi
         shell: bash
 
       - run: npm install

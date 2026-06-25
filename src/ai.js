@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import Groq from 'groq-sdk';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 
@@ -12,12 +12,12 @@ function loadEnv() {
       env[key.trim()] = rest.join('=').trim();
     }
   }
-  if (process.env.GEMINI_API_KEY) env.GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  if (process.env.GROQ_API_KEY) env.GROQ_API_KEY = process.env.GROQ_API_KEY;
   return env;
 }
 
 const env = loadEnv();
-const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
+const groq = new Groq({ apiKey: env.GROQ_API_KEY || env.GROC_API_kEY });
 
 const PERSONA = `You are Ebube, a freelance designer and developer in Nigeria. You tweet about design, development, freelancing, and building in public. Your tweets are casual, conversational, and authentic — like a real person sharing their thoughts, not a marketing bot. You use natural language, occasional abbreviations, and write like you're talking to a friend. No hashtags. No emojis. Just real talk.`;
 
@@ -25,15 +25,18 @@ function parseTweet(text) {
   return text.replace(/^["']|["']$/g, '').replace(/^Tweet:\s*/i, '').trim();
 }
 
-const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'];
+const MODELS = ['llama-3.3-70b-versatile', 'meta-llama/llama-4-scout-17b-16e-instruct', 'llama-3.1-8b-instant'];
 
 async function generateWithRetry(prompt) {
   for (const modelName of MODELS) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent(prompt);
-        return result.response.text();
+        const result = await groq.chat.completions.create({
+          model: modelName,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 300,
+        });
+        return result.choices[0]?.message?.content || null;
       } catch (err) {
         const retryable = err.message?.includes('429') || err.message?.includes('503') || err.message?.includes('quota') || err.message?.includes('Too Many');
         if (retryable && attempt === 0) {
@@ -41,6 +44,7 @@ async function generateWithRetry(prompt) {
           await new Promise(r => setTimeout(r, 3000));
           continue;
         }
+        console.log(`${modelName} error: ${err.message?.substring(0, 100)}`);
         if (modelName !== MODELS[MODELS.length - 1]) {
           console.log(`${modelName} failed, trying next model...`);
           break;

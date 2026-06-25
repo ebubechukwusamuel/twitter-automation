@@ -14,7 +14,7 @@ env:
   TWITTER_USERNAME: ${{ secrets.TWITTER_USERNAME }}
   TWITTER_PASSWORD: ${{ secrets.TWITTER_PASSWORD }}
   TWITTER_PHONE: ${{ secrets.TWITTER_PHONE }}
-  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
 
 jobs:
   twitter-bot:

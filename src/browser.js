@@ -19,12 +19,14 @@ function loadEnv() {
   if (process.env.TWITTER_USERNAME) env.TWITTER_USERNAME = process.env.TWITTER_USERNAME;
   if (process.env.TWITTER_PASSWORD) env.TWITTER_PASSWORD = process.env.TWITTER_PASSWORD;
   if (process.env.TWITTER_EMAIL) env.TWITTER_EMAIL = process.env.TWITTER_EMAIL;
+  if (process.env.TWITTER_PHONE) env.TWITTER_PHONE = process.env.TWITTER_PHONE;
   return env;
 }
 
 const env = loadEnv();
 const USERNAME = (env.TWITTER_USERNAME || '').replace('@', '');
 const PASSWORD = env.TWITTER_PASSWORD || '';
+const PHONE = env.TWITTER_PHONE || '';
 
 function loadState() {
   if (!existsSync(STATE_FILE)) return { posted: [], engaged: [], lastEngage: null };
@@ -104,64 +106,84 @@ export async function login(context, page) {
     console.log('Login submitted, URL:', page.url());
 
     if (page.url().includes('onboarding')) {
-      console.log('Onboarding page detected, dumping page content...');
-      const pageText = await page.evaluate(() => document.body.innerText);
-      console.log('=== FULL ONBOARDING TEXT ===');
-      console.log(pageText);
-      console.log('=== END TEXT ===');
+      console.log('Onboarding page detected, handling phone verification...');
 
-      const elements = await page.evaluate(() =>
-        [...document.querySelectorAll('button, a, input, [role="button"], [tabindex]')]
-          .map(el => `${el.tagName} type="${el.getAttribute('type') || ''}" text="${(el.textContent || '').trim().substring(0, 50)}" visible=${el.offsetParent !== null} href="${el.getAttribute('href') || ''}"`)
-      );
-      console.log('Interactive elements:', JSON.stringify(elements, null, 2));
-      await page.screenshot({ path: resolve(import.meta.dirname, '..', 'onboarding.png') });
+      // Click "Continue with phone" button
+      const phoneContinueBtn = page.locator('button:has-text("Continue with phone")');
+      if (await phoneContinueBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await phoneContinueBtn.click();
+        console.log('Clicked "Continue with phone"');
+        await page.waitForTimeout(2000);
+      }
 
-      const fullHtml = await page.content();
-      const bodyHtml = fullHtml.match(/<body[^>]*>[\s\S]*?<\/body>/i);
-      console.log('Body HTML snippet:', bodyHtml?.[0]?.substring(0, 3000));
+      // Change country code from default (+1) to +234 (Nigeria)
+      const countrySelector = page.locator('div[role="button"]:has-text("+1"), button:has-text("+1"), [data-testid*="countryCode"], select');
+      if (await countrySelector.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await countrySelector.click();
+        await page.waitForTimeout(1000);
+        // Type to search for Nigeria
+        const searchInput = page.locator('input[placeholder*="Search"], input[type="text"]').first();
+        if (await searchInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await searchInput.fill('Nigeria');
+          await page.waitForTimeout(1000);
+        }
+        // Click +234 option
+        const ngOption = page.locator('div[role="option"]:has-text("+234"), div[role="option"]:has-text("Nigeria"), [data-testid*="+234"]').first();
+        if (await ngOption.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await ngOption.click();
+          console.log('Country code set to +234');
+          await page.waitForTimeout(1000);
+        }
+      }
 
-      console.log('Onboarding page detected, attempting to proceed...');
-      for (let i = 0; i < 10; i++) {
+      // Enter phone number (strip leading 0)
+      let phoneEntered = false;
+      const phoneInput = page.locator('input[type="text"], input[autocomplete="tel"], input[name="phone_number"]').first();
+      if (await phoneInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+        const cleanPhone = PHONE.replace(/^0+/, '');
+        await phoneInput.fill(cleanPhone);
+        console.log(`Entered phone: ${cleanPhone}`);
+        await page.waitForTimeout(500);
+        phoneEntered = true;
+      }
+
+      // Click Continue after phone
+      if (phoneEntered) {
+        const continueBtn = page.locator('button:has-text("Continue"), input[type="submit"][value="Continue"]').first();
+        if (await continueBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await continueBtn.click();
+          console.log('Clicked Continue');
+          await page.waitForTimeout(3000);
+        }
+      }
+
+      // Handle SMS verification code if prompted
+      for (let i = 0; i < 5; i++) {
         const url = page.url();
         if (!url.includes('onboarding') && !url.includes('login')) {
           console.log('Left onboarding, URL:', url);
           break;
         }
 
-        const allButtons = page.locator('button, a[role="button"], div[role="button"], a, input[type="submit"]');
-        const btnCount = await allButtons.count();
-        console.log(`Found ${btnCount} interactive elements`);
-
-        let clicked = false;
-        for (let b = 0; b < btnCount; b++) {
-          const el = allButtons.nth(b);
-          const visible = await el.isVisible({ timeout: 500 }).catch(() => false);
-          if (!visible) continue;
-          const elText = await el.textContent().catch(() => '');
-          const elTag = await el.evaluate(e => e.tagName + (e.getAttribute('type') ? `[type="${e.getAttribute('type')}"]` : '')).catch(() => 'unknown');
-          const trimmed = elText?.trim() || '';
-          console.log(`  #${b}: <${elTag}> "${trimmed.substring(0, 40)}"`);
-          try {
-            const box = await el.boundingBox();
-            if (!box || box.width === 0 || box.height === 0) continue;
-            await el.click({ force: true });
-            console.log(`  -> Clicked #${b}`);
-            await page.waitForTimeout(2000);
-            clicked = true;
-            break;
-          } catch (e) {
-            // ignore
-          }
+        const smsInput = page.locator('input[inputmode="numeric"], input[type="number"], input[autocomplete="one-time-code"]').first();
+        if (await smsInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+          console.log('SMS verification code required!');
+          // Pause for 60s - user needs to provide code via env
+          console.log('Waiting 60 seconds for SMS code...');
+          await page.waitForTimeout(60000);
+          // Check if code was set via env and entered somehow
+          break;
         }
 
-        if (!clicked) {
-          console.log('Nothing to click, trying Enter key...');
-          await page.keyboard.press('Enter');
-          await page.waitForTimeout(3000);
+        // Try clicking any obvious continue/submit buttons
+        const anyContinue = page.locator('button:has-text("Continue"), button:has-text("Next"), button:has-text("Submit"), input[type="submit"]').first();
+        if (await anyContinue.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await anyContinue.click();
+          await page.waitForTimeout(2000);
+          continue;
         }
 
-        if (i === 9) console.log('Exhausted onboarding attempts');
+        await page.waitForTimeout(3000);
       }
     }
 

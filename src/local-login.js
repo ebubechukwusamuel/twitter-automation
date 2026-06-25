@@ -32,7 +32,6 @@ async function localLogin() {
 
   const browser = await chromium.launch({
     headless: false,
-    channel: 'msedge',
   });
 
   const context = await browser.newContext({

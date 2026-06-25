@@ -108,53 +108,108 @@ export async function login(context, page) {
     if (page.url().includes('onboarding')) {
       console.log('Onboarding page detected, handling phone verification...');
 
-      // Click "Continue with phone" button
-      const phoneContinueBtn = page.locator('button:has-text("Continue with phone")');
-      if (await phoneContinueBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await phoneContinueBtn.click();
-        console.log('Clicked "Continue with phone"');
-        await page.waitForTimeout(2000);
-      }
+      // First, dump all inputs to understand the page structure
+      const inputInfo = await page.evaluate(() =>
+        [...document.querySelectorAll('input, button, select')].map(el => ({
+          tag: el.tagName,
+          type: el.getAttribute('type') || '',
+          name: el.getAttribute('name') || '',
+          placeholder: el.getAttribute('placeholder') || '',
+          text: (el.textContent || '').trim().substring(0, 30),
+          id: el.getAttribute('id') || '',
+          'aria-label': el.getAttribute('aria-label') || '',
+          autocomplete: el.getAttribute('autocomplete') || '',
+          inputmode: el.getAttribute('inputmode') || '',
+          visible: el.offsetParent !== null,
+          class: el.className?.substring(0, 40) || '',
+        }))
+      );
+      console.log('=== PHONE PAGE INPUTS ===');
+      inputInfo.forEach((inf, i) => console.log(`  ${i}: <${inf.tag}> type=${inf.type} placeholder="${inf.placeholder}" name="${inf.name}" text="${inf.text}" visible=${inf.visible} auto="${inf.autocomplete}" mode="${inf.inputmode}" aria="${inf['aria-label']}"`));
+      console.log('=== END ===');
 
-      // Change country code from default (+1) to +234 (Nigeria)
-      const countrySelector = page.locator('div[role="button"]:has-text("+1"), button:has-text("+1"), [data-testid*="countryCode"], select');
-      if (await countrySelector.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await countrySelector.click();
-        await page.waitForTimeout(1000);
-        // Type to search for Nigeria
-        const searchInput = page.locator('input[placeholder*="Search"], input[type="text"]').first();
-        if (await searchInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await searchInput.fill('Nigeria');
-          await page.waitForTimeout(1000);
-        }
-        // Click +234 option
-        const ngOption = page.locator('div[role="option"]:has-text("+234"), div[role="option"]:has-text("Nigeria"), [data-testid*="+234"]').first();
-        if (await ngOption.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await ngOption.click();
-          console.log('Country code set to +234');
-          await page.waitForTimeout(1000);
-        }
-      }
-
-      // Enter phone number (strip leading 0)
-      let phoneEntered = false;
-      const phoneInput = page.locator('input[type="text"], input[autocomplete="tel"], input[name="phone_number"]').first();
-      if (await phoneInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-        const cleanPhone = PHONE.replace(/^0+/, '');
-        await phoneInput.fill(cleanPhone);
-        console.log(`Entered phone: ${cleanPhone}`);
-        await page.waitForTimeout(500);
-        phoneEntered = true;
-      }
-
-      // Click Continue after phone
-      if (phoneEntered) {
-        const continueBtn = page.locator('button:has-text("Continue"), input[type="submit"][value="Continue"]').first();
-        if (await continueBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await continueBtn.click();
-          console.log('Clicked Continue');
+      // Click "Continue with phone" button (if not already on phone entry)
+      const pageText = await page.evaluate(() => document.body.innerText).catch(() => '');
+      if (pageText.includes('Continue with phone')) {
+        const phoneContinueBtn = page.locator('button:has-text("Continue with phone")');
+        if (await phoneContinueBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+          await phoneContinueBtn.click();
+          console.log('Clicked "Continue with phone"');
           await page.waitForTimeout(3000);
         }
+      }
+
+      // Dump again after clicking to see changed state
+      const inputInfo2 = await page.evaluate(() =>
+        [...document.querySelectorAll('input, button, select')].map(el => ({
+          tag: el.tagName,
+          type: el.getAttribute('type') || '',
+          name: el.getAttribute('name') || '',
+          placeholder: el.getAttribute('placeholder') || '',
+          text: (el.textContent || '').trim().substring(0, 30),
+          id: el.getAttribute('id') || '',
+          autocomplete: el.getAttribute('autocomplete') || '',
+          inputmode: el.getAttribute('inputmode') || '',
+          visible: el.offsetParent !== null,
+          value: (el.tagName === 'INPUT' ? el.value : '').substring(0, 20) || '',
+        }))
+      );
+      console.log('=== AFTER "Continue with phone" INPUTS ===');
+      inputInfo2.forEach((inf, i) => console.log(`  ${i}: <${inf.tag}> type=${inf.type} placeholder="${inf.placeholder}" text="${inf.text}" visible=${inf.visible} value="${inf.value}" auto="${inf.autocomplete}"`));
+      console.log('=== END ===');
+
+      // Try to change country code: find the phone input, then look for a preceding country selector button
+      const countrySelector = page.locator('button, [role="button"]').filter({ hasText: /\+1|\+234|🇺🇸|🇳🇬|^[A-Z]{2}$/ }).first();
+      if (await countrySelector.isVisible({ timeout: 2000 }).catch(() => false)) {
+        const ctryText = await countrySelector.textContent();
+        console.log(`Country selector found: "${ctryText?.trim()}"`);
+        if (ctryText?.includes('+1')) {
+          await countrySelector.click();
+          await page.waitForTimeout(1500);
+          // After clicking country selector, type 234 to filter
+          const searchField = page.locator('input[placeholder*="Search"], input[placeholder*="search"]').first();
+          if (await searchField.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await searchField.fill('234');
+            await page.waitForTimeout(1000);
+          }
+          // Look for Nigeria option
+          const ngOption = page.locator('div[role="option"], [role="option"], option').filter({ hasText: /234|Nigeria/ }).first();
+          if (await ngOption.isVisible({ timeout: 3000 }).catch(() => false)) {
+            await ngOption.click();
+            console.log('Country code set to +234');
+            await page.waitForTimeout(1000);
+          }
+        } else {
+          console.log('Country already set to +234 or non-US');
+        }
+      }
+
+      // Find the phone number input specifically
+      const phoneInput = page.locator('input[autocomplete="tel"], input[inputmode="numeric"], input[type="tel"]').or(page.locator('input[placeholder*="phone" i], input[placeholder*="Phone" i], input[name="phone_number"]')).first();
+      const cleanPhone = PHONE.replace(/^0+/, '');
+      if (await phoneInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await phoneInput.click();
+        await phoneInput.fill(cleanPhone);
+        console.log(`Phone entered: ${cleanPhone}`);
+        await page.waitForTimeout(1000);
+      } else {
+        // Fallback: try the first visible text input that's NOT a search input
+        const allInputs = page.locator('input[type="text"]:not([placeholder*="Search" i]):not([placeholder*="search" i])');
+        const ic = await allInputs.count();
+        console.log(`Fallback: found ${ic} non-search text inputs`);
+        if (ic > 0) {
+          await allInputs.first().fill(cleanPhone);
+          console.log(`Phone entered (fallback): ${cleanPhone}`);
+          await page.waitForTimeout(1000);
+        }
+      }
+
+      // Click Continue
+      const continueBtn = page.locator('button:has-text("Continue"), input[type="submit"]').first();
+      if (await continueBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await continueBtn.click({ force: true });
+        console.log('Clicked Continue');
+        await page.waitForTimeout(3000);
       }
 
       // Handle SMS verification code if prompted

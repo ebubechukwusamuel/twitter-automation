@@ -385,8 +385,11 @@ export async function engage(context, page, keywords) {
 
     if (count === 0) {
       console.log('No tweets found');
+      await page.screenshot({ path: resolve(import.meta.dirname, '..', 'engage-no-tweets.png') });
       return 0;
     }
+    console.log(`Found ${count} tweets in search results`);
+    await page.screenshot({ path: resolve(import.meta.dirname, '..', 'engage-results.png') });
 
     const state = loadState();
     let engaged = 0;

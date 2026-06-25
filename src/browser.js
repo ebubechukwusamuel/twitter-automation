@@ -394,7 +394,7 @@ export async function engage(context, page, keywords) {
 
     for (let i = 0; i < count && engaged < maxEngage; i++) {
       const tweet = tweets.nth(i);
-      const tweetLink = await tweet.locator('a[href*="/status/"]').getAttribute('href');
+      const tweetLink = await tweet.locator('a[href*="/status/"]').first().getAttribute('href');
       const tweetId = tweetLink?.split('/status/')[1]?.split('?')[0];
 
       if (!tweetId || state.engaged.includes(tweetId)) continue;

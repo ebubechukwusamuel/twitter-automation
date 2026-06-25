@@ -61,6 +61,23 @@ export async function generateTweet(topic) {
   return text ? parseTweet(text) : null;
 }
 
+export async function generatePost() {
+  const prompt = `${PERSONA}\n\nWrite one tweet (under 280 characters) about design, development, freelancing, or building in public. Make it sound completely natural.
+After the tweet, on a new line, write INCLUDE_IMAGE: true or INCLUDE_IMAGE: false. Include an image if the tweet is about showing work, sharing a project, a design tip, code snippet, or something visual. Skip image for general thoughts, opinions, or personal updates.
+
+Example output:
+Just finished a brand identity project for a fintech startup. The color palette took the longest but it came together beautifully.
+INCLUDE_IMAGE: true`;
+
+  const result = await generateWithRetry(prompt);
+  if (!result) return { text: null, includeImage: false };
+
+  const lines = result.trim().split('\n');
+  const includeImage = lines.some(l => l.includes('INCLUDE_IMAGE: true'));
+  const text = parseTweet(lines.filter(l => !l.includes('INCLUDE_IMAGE:')).join('\n'));
+  return { text, includeImage };
+}
+
 export async function generateReply(tweetText, username) {
   const prompt = `${PERSONA}\n\nSomeone tweeted this:\n"${tweetText}"\n— by @${username}\n\nWrite a natural reply (under 200 characters) that sounds like a real person engaging with their content. Be thoughtful and specific to what they said. No hashtags. No emojis. Just the reply text.`;
   const text = await generateWithRetry(prompt);

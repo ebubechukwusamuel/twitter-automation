@@ -304,7 +304,7 @@ export async function ensureLoggedIn(context, page) {
   return true;
 }
 
-export async function postTweet(context, page, text) {
+export async function postTweet(context, page, text, imagePath) {
   try {
     console.log('Current URL:', page.url());
 
@@ -313,6 +313,29 @@ export async function postTweet(context, page, text) {
     console.log('Post button found');
     await postBtn.click();
     await page.waitForTimeout(3000);
+
+    if (imagePath && existsSync(imagePath)) {
+      try {
+        const fileInput = page.locator('input[data-testid="fileInput"]');
+        if (await fileInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await fileInput.setInputFiles(imagePath);
+          console.log('Image attached:', imagePath);
+          await page.waitForTimeout(3000);
+        } else {
+          const chooseBtn = page.locator('button[data-testid="fileInput"]');
+          if (await chooseBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+            const input = page.locator('input[type="file"]').first();
+            await input.setInputFiles(imagePath);
+            console.log('Image attached via fallback input');
+            await page.waitForTimeout(3000);
+          } else {
+            console.log('No file input found, posting without image');
+          }
+        }
+      } catch (imgErr) {
+        console.log('Failed to attach image:', imgErr.message);
+      }
+    }
 
     const textareaSelectors = [
       'div[data-testid="tweetTextarea_0"]',
@@ -342,6 +365,7 @@ export async function postTweet(context, page, text) {
       'div[data-testid="tweetButtonInline"]',
       'button:has-text("Post")',
       'div[data-testid="tweetButton"]',
+      'button[data-testid="tweetButton"]',
     ];
 
     let tweetBtn = null;
@@ -357,7 +381,7 @@ export async function postTweet(context, page, text) {
       await page.keyboard.press('Control+Enter');
     }
 
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(4000);
     console.log(`Posted: ${text}`);
 
     const state = loadState();

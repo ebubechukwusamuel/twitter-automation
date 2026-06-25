@@ -1,6 +1,6 @@
 import { createSession, login, postTweet, ensureLoggedIn, engage } from './browser.js';
-import { generateTweet, getFallbackTweet } from './ai.js';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { generatePost, getFallbackTweet } from './ai.js';
+import { existsSync, readFileSync, writeFileSync, readdirSync } from 'fs';
 import { resolve } from 'path';
 
 const STATE_FILE = resolve(import.meta.dirname, '..', 'state.json');
@@ -44,12 +44,29 @@ async function main() {
     const loggedIn = await ensureLoggedIn(context, page);
 
     if (mode === 'post' || mode === 'both') {
-      let text = await generateTweet();
+      const post = await generatePost();
+      let text = post?.text;
+      let imagePath = null;
+
       if (!text) {
         text = getFallbackTweet();
         console.log('Using fallback tweet (AI unavailable)');
       }
-      await postTweet(context, page, text);
+
+      if (post?.includeImage) {
+        const assetsDir = resolve(import.meta.dirname, '..', 'assets');
+        if (existsSync(assetsDir)) {
+          const files = readdirSync(assetsDir).filter(f => /\.(png|jpg|jpeg|gif|webp)$/i.test(f));
+          if (files.length > 0) {
+            imagePath = resolve(assetsDir, files[Math.floor(Math.random() * files.length)]);
+            console.log('Including image:', imagePath);
+          } else {
+            console.log('No images in assets/ to attach');
+          }
+        }
+      }
+
+      await postTweet(context, page, text, imagePath);
     }
 
     if (mode === 'engage' || mode === 'both') {

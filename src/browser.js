@@ -128,89 +128,41 @@ export async function login(context, page) {
       inputInfo.forEach((inf, i) => console.log(`  ${i}: <${inf.tag}> type=${inf.type} placeholder="${inf.placeholder}" name="${inf.name}" text="${inf.text}" visible=${inf.visible} auto="${inf.autocomplete}" mode="${inf.inputmode}" aria="${inf['aria-label']}"`));
       console.log('=== END ===');
 
-      // Click "Continue with phone" button (if not already on phone entry)
-      const pageText = await page.evaluate(() => document.body.innerText).catch(() => '');
-      if (pageText.includes('Continue with phone')) {
-        const phoneContinueBtn = page.locator('button:has-text("Continue with phone")');
-        if (await phoneContinueBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-          await phoneContinueBtn.click();
-          console.log('Clicked "Continue with phone"');
-          await page.waitForTimeout(3000);
+      // The page shows "Enter your phone number" with a username_or_email field.
+      // X.com uses a universal input - phone number goes into the same field.
+      // First, click "Continue with phone" to ensure we're in phone mode
+      const pageText2 = await page.evaluate(() => document.body.innerText).catch(() => '');
+      if (pageText2.includes('Continue with phone') && !pageText2.includes('Enter your')) {
+        const phoneModeBtn = page.locator('button:has-text("Continue with phone")').first();
+        if (await phoneModeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await phoneModeBtn.click();
+          console.log('Clicked "Continue with phone" to select phone mode');
+          await page.waitForTimeout(2000);
         }
       }
 
-      // Dump again after clicking to see changed state
-      const inputInfo2 = await page.evaluate(() =>
-        [...document.querySelectorAll('input, button, select')].map(el => ({
-          tag: el.tagName,
-          type: el.getAttribute('type') || '',
-          name: el.getAttribute('name') || '',
-          placeholder: el.getAttribute('placeholder') || '',
-          text: (el.textContent || '').trim().substring(0, 30),
-          id: el.getAttribute('id') || '',
-          autocomplete: el.getAttribute('autocomplete') || '',
-          inputmode: el.getAttribute('inputmode') || '',
-          visible: el.offsetParent !== null,
-          value: (el.tagName === 'INPUT' ? el.value : '').substring(0, 20) || '',
-        }))
-      );
-      console.log('=== AFTER "Continue with phone" INPUTS ===');
-      inputInfo2.forEach((inf, i) => console.log(`  ${i}: <${inf.tag}> type=${inf.type} placeholder="${inf.placeholder}" text="${inf.text}" visible=${inf.visible} value="${inf.value}" auto="${inf.autocomplete}"`));
-      console.log('=== END ===');
-
-      // Try to change country code: find the phone input, then look for a preceding country selector button
-      const countrySelector = page.locator('button, [role="button"]').filter({ hasText: /\+1|\+234|🇺🇸|🇳🇬|^[A-Z]{2}$/ }).first();
-      if (await countrySelector.isVisible({ timeout: 2000 }).catch(() => false)) {
-        const ctryText = await countrySelector.textContent();
-        console.log(`Country selector found: "${ctryText?.trim()}"`);
-        if (ctryText?.includes('+1')) {
-          await countrySelector.click();
-          await page.waitForTimeout(1500);
-          // After clicking country selector, type 234 to filter
-          const searchField = page.locator('input[placeholder*="Search"], input[placeholder*="search"]').first();
-          if (await searchField.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await searchField.fill('234');
-            await page.waitForTimeout(1000);
-          }
-          // Look for Nigeria option
-          const ngOption = page.locator('div[role="option"], [role="option"], option').filter({ hasText: /234|Nigeria/ }).first();
-          if (await ngOption.isVisible({ timeout: 3000 }).catch(() => false)) {
-            await ngOption.click();
-            console.log('Country code set to +234');
-            await page.waitForTimeout(1000);
-          }
-        } else {
-          console.log('Country already set to +234 or non-US');
-        }
-      }
-
-      // Find the phone number input specifically
-      const phoneInput = page.locator('input[autocomplete="tel"], input[inputmode="numeric"], input[type="tel"]').or(page.locator('input[placeholder*="phone" i], input[placeholder*="Phone" i], input[name="phone_number"]')).first();
+      // Clear all username_or_email inputs and fill with phone number
       const cleanPhone = PHONE.replace(/^0+/, '');
-      if (await phoneInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await phoneInput.click();
-        await phoneInput.fill(cleanPhone);
-        console.log(`Phone entered: ${cleanPhone}`);
-        await page.waitForTimeout(1000);
-      } else {
-        // Fallback: try the first visible text input that's NOT a search input
-        const allInputs = page.locator('input[type="text"]:not([placeholder*="Search" i]):not([placeholder*="search" i])');
-        const ic = await allInputs.count();
-        console.log(`Fallback: found ${ic} non-search text inputs`);
-        if (ic > 0) {
-          await allInputs.first().fill(cleanPhone);
-          console.log(`Phone entered (fallback): ${cleanPhone}`);
-          await page.waitForTimeout(1000);
-        }
+      const userInputs = page.locator('input[name="username_or_email"]');
+      const count = await userInputs.count();
+      console.log(`Found ${count} username/email inputs`);
+      for (let i = 0; i < count; i++) {
+        await userInputs.nth(i).fill('');
+        console.log(`Cleared input ${i}`);
+      }
+      await page.waitForTimeout(500);
+      // Fill the last (most likely the visible) input with phone number
+      if (count > 0) {
+        const target = await userInputs.nth(count - 1).isVisible() ? userInputs.nth(count - 1) : userInputs.first();
+        await target.fill(cleanPhone);
+        console.log(`Phone entered in username field: ${cleanPhone}`);
+        await page.waitForTimeout(500);
       }
 
-      // Click Continue
-      const continueBtn = page.locator('button:has-text("Continue"), input[type="submit"]').first();
-      if (await continueBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await continueBtn.click({ force: true });
-        console.log('Clicked Continue');
-        await page.waitForTimeout(3000);
-      }
+      // Press Enter to submit
+      await page.keyboard.press('Enter');
+      console.log('Pressed Enter to submit phone');
+      await page.waitForTimeout(5000);
 
       // Handle SMS verification code if prompted
       await page.screenshot({ path: resolve(import.meta.dirname, '..', 'after-phone.png') });
@@ -219,7 +171,8 @@ export async function login(context, page) {
       console.log(postPhoneText.substring(0, 2000));
       console.log('=== END ===');
 
-      for (let i = 0; i < 5; i++) {
+      // Wait for SMS code input or timeline
+      for (let i = 0; i < 10; i++) {
         const url = page.url();
         if (!url.includes('onboarding') && !url.includes('login')) {
           console.log('Left onboarding, URL:', url);
@@ -227,21 +180,42 @@ export async function login(context, page) {
         }
 
         // Check for SMS verification code inputs (6 individual boxes)
-        const codeInputs = page.locator('input[inputmode="numeric"], input[type="tel"]');
+        const codeInputs = page.locator('input[inputmode="numeric"]');
         const codeCount = await codeInputs.count();
         if (codeCount >= 4) {
-          console.log(`Found ${codeCount} SMS code inputs - code required!`);
-          // We can't read SMS in CI. Break and fail - user needs to provide auth.json
+          console.log(`Found ${codeCount} SMS code inputs!`);
+          console.log('SMS verification code required. Please check your phone.');
+          // Check if TWITTER_SMS_CODE env var is set
+          const smsCode = env.TWITTER_SMS_CODE || '';
+          if (smsCode) {
+            console.log('TWITTER_SMS_CODE found, entering code...');
+            const firstInput = await codeInputs.first();
+            await firstInput.click();
+            await page.keyboard.type(smsCode, { delay: 100 });
+            await page.waitForTimeout(2000);
+            // Wait for the next step
+            await page.waitForTimeout(5000);
+          } else {
+            console.log('No SMS code available - cannot proceed with CI login.');
+            console.log('Alternative: run locally once and upload auth.json as secret.');
+            break;
+          }
           break;
         }
 
-        // Try clicking the next button with force to bypass mask overlay
-        const nextBtn = page.locator('button:has-text("Continue"), button:has-text("Next"), button:has-text("Submit"), button:has-text("Send"), input[type="submit"]').first();
-        if (await nextBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await nextBtn.click({ force: true });
-          console.log('Clicked next button (force)');
-          await page.waitForTimeout(3000);
-          continue;
+        // Check for "Try again" or error messages
+        const tryAgainBtn = page.locator('button:has-text("Try again"), button:has-text("Resend")');
+        if (await tryAgainBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+          console.log('Error occurred - try again button visible');
+          await page.screenshot({ path: resolve(import.meta.dirname, '..', 'phone-error.png') });
+          break;
+        }
+
+        // If we see primaryColumn, we're done
+        const primaryCol = page.locator('div[data-testid="primaryColumn"]');
+        if (await primaryCol.isVisible({ timeout: 2000 }).catch(() => false)) {
+          console.log('Timeline reached!');
+          break;
         }
 
         await page.waitForTimeout(3000);

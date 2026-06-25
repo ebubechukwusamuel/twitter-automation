@@ -34,6 +34,13 @@ jobs:
           path: auth.json
           key: twitter-auth-v1
 
+      - name: Decode auth session from secret (overrides expired cache)
+        if: ${{ secrets.AUTH_JSON != '' }}
+        env:
+          AUTH_JSON: ${{ secrets.AUTH_JSON }}
+        run: echo "$AUTH_JSON" | base64 -d > auth.json
+        shell: bash
+
       - run: npm install
       - run: npx playwright install --with-deps chromium
 

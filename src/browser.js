@@ -129,32 +129,36 @@ export async function login(context, page) {
           break;
         }
 
-        const allButtons = page.locator('button, a[role="button"], div[role="button"]');
+        const allButtons = page.locator('button, a[role="button"], div[role="button"], a, input[type="submit"]');
         const btnCount = await allButtons.count();
-        console.log(`Found ${btnCount} buttons, clicking visible ones...`);
+        console.log(`Found ${btnCount} interactive elements`);
 
         let clicked = false;
         for (let b = 0; b < btnCount; b++) {
-          const btn = allButtons.nth(b);
-          if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
-            const btnText = await btn.textContent().catch(() => '');
-            console.log(`  Button ${b}: "${btnText?.trim()}"`);
-            if (!btnText?.trim() || btnText?.trim() === '') continue;
-            try {
-              await btn.click();
-              console.log(`  Clicked button ${b}`);
-              await page.waitForTimeout(2000);
-              clicked = true;
-              break;
-            } catch (e) {
-              console.log(`  Click failed: ${e.message}`);
-            }
+          const el = allButtons.nth(b);
+          const visible = await el.isVisible({ timeout: 500 }).catch(() => false);
+          if (!visible) continue;
+          const elText = await el.textContent().catch(() => '');
+          const elTag = await el.evaluate(e => e.tagName + (e.getAttribute('type') ? `[type="${e.getAttribute('type')}"]` : '')).catch(() => 'unknown');
+          const trimmed = elText?.trim() || '';
+          console.log(`  #${b}: <${elTag}> "${trimmed.substring(0, 40)}"`);
+          try {
+            const box = await el.boundingBox();
+            if (!box || box.width === 0 || box.height === 0) continue;
+            await el.click({ force: true });
+            console.log(`  -> Clicked #${b}`);
+            await page.waitForTimeout(2000);
+            clicked = true;
+            break;
+          } catch (e) {
+            // ignore
           }
         }
 
         if (!clicked) {
-          console.log('No buttons to click, waiting...');
-          await page.waitForTimeout(5000);
+          console.log('Nothing to click, trying Enter key...');
+          await page.keyboard.press('Enter');
+          await page.waitForTimeout(3000);
         }
 
         if (i === 9) console.log('Exhausted onboarding attempts');

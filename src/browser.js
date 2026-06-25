@@ -158,6 +158,12 @@ export async function login(context, page) {
       }
 
       // Handle SMS verification code if prompted
+      await page.screenshot({ path: resolve(import.meta.dirname, '..', 'after-phone.png') });
+      const pageText = await page.evaluate(() => document.body.innerText).catch(() => '');
+      console.log('=== AFTER PHONE PAGE TEXT ===');
+      console.log(pageText.substring(0, 2000));
+      console.log('=== END ===');
+
       for (let i = 0; i < 5; i++) {
         const url = page.url();
         if (!url.includes('onboarding') && !url.includes('login')) {
@@ -165,21 +171,21 @@ export async function login(context, page) {
           break;
         }
 
-        const smsInput = page.locator('input[inputmode="numeric"], input[type="number"], input[autocomplete="one-time-code"]').first();
-        if (await smsInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-          console.log('SMS verification code required!');
-          // Pause for 60s - user needs to provide code via env
-          console.log('Waiting 60 seconds for SMS code...');
-          await page.waitForTimeout(60000);
-          // Check if code was set via env and entered somehow
+        // Check for SMS verification code inputs (6 individual boxes)
+        const codeInputs = page.locator('input[inputmode="numeric"], input[type="tel"]');
+        const codeCount = await codeInputs.count();
+        if (codeCount >= 4) {
+          console.log(`Found ${codeCount} SMS code inputs - code required!`);
+          // We can't read SMS in CI. Break and fail - user needs to provide auth.json
           break;
         }
 
-        // Try clicking any obvious continue/submit buttons
-        const anyContinue = page.locator('button:has-text("Continue"), button:has-text("Next"), button:has-text("Submit"), input[type="submit"]').first();
-        if (await anyContinue.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await anyContinue.click();
-          await page.waitForTimeout(2000);
+        // Try clicking the next button with force to bypass mask overlay
+        const nextBtn = page.locator('button:has-text("Continue"), button:has-text("Next"), button:has-text("Submit"), button:has-text("Send"), input[type="submit"]').first();
+        if (await nextBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await nextBtn.click({ force: true });
+          console.log('Clicked next button (force)');
+          await page.waitForTimeout(3000);
           continue;
         }
 

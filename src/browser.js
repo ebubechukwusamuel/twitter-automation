@@ -104,6 +104,23 @@ export async function login(context, page) {
     console.log('Login submitted, URL:', page.url());
 
     if (page.url().includes('onboarding')) {
+      console.log('Onboarding page detected, dumping page content...');
+      const pageText = await page.evaluate(() => document.body.innerText);
+      console.log('=== FULL ONBOARDING TEXT ===');
+      console.log(pageText);
+      console.log('=== END TEXT ===');
+
+      const elements = await page.evaluate(() =>
+        [...document.querySelectorAll('button, a, input, [role="button"], [tabindex]')]
+          .map(el => `${el.tagName} type="${el.getAttribute('type') || ''}" text="${(el.textContent || '').trim().substring(0, 50)}" visible=${el.offsetParent !== null} href="${el.getAttribute('href') || ''}"`)
+      );
+      console.log('Interactive elements:', JSON.stringify(elements, null, 2));
+      await page.screenshot({ path: resolve(import.meta.dirname, '..', 'onboarding.png') });
+
+      const fullHtml = await page.content();
+      const bodyHtml = fullHtml.match(/<body[^>]*>[\s\S]*?<\/body>/i);
+      console.log('Body HTML snippet:', bodyHtml?.[0]?.substring(0, 3000));
+
       console.log('Onboarding page detected, attempting to proceed...');
       for (let i = 0; i < 10; i++) {
         const url = page.url();
@@ -112,25 +129,31 @@ export async function login(context, page) {
           break;
         }
 
-        const nextBtn = page.locator('button:has-text("Next"), button:has-text("Continue"), button:has-text("Confirm")');
-        const skipBtn = page.locator('button:has-text("Skip"), button:has-text("Not now"), button:has-text("Maybe later")');
-        const dismissBtn = page.locator('a[role="link"]:has-text("Skip"), span:has-text("Skip")');
+        const allButtons = page.locator('button, a[role="button"], div[role="button"]');
+        const btnCount = await allButtons.count();
+        console.log(`Found ${btnCount} buttons, clicking visible ones...`);
 
         let clicked = false;
-        for (const btn of [nextBtn, skipBtn, dismissBtn]) {
-          if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await btn.click();
-            console.log('Clicked button on onboarding page');
-            await page.waitForTimeout(2000);
-            clicked = true;
-            break;
+        for (let b = 0; b < btnCount; b++) {
+          const btn = allButtons.nth(b);
+          if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+            const btnText = await btn.textContent().catch(() => '');
+            console.log(`  Button ${b}: "${btnText?.trim()}"`);
+            if (!btnText?.trim() || btnText?.trim() === '') continue;
+            try {
+              await btn.click();
+              console.log(`  Clicked button ${b}`);
+              await page.waitForTimeout(2000);
+              clicked = true;
+              break;
+            } catch (e) {
+              console.log(`  Click failed: ${e.message}`);
+            }
           }
         }
 
         if (!clicked) {
-          console.log('No buttons found on onboarding page, waiting...');
-          const bodyText = await page.evaluate(() => document.body.innerText.substring(0, 500));
-          console.log('Onboarding text:', bodyText);
+          console.log('No buttons to click, waiting...');
           await page.waitForTimeout(5000);
         }
 

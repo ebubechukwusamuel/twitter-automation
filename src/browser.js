@@ -405,6 +405,19 @@ export async function engage(context, page, keywords) {
       let didSomething = false;
 
       try {
+        // Debug dump first tweet's structure to understand X.com layout
+        if (i === 0) {
+          const tweetHTML = await tweet.evaluate(el => el.innerHTML.substring(0, 5000));
+          console.log('=== FIRST TWEET HTML (5000 chars) ===');
+          console.log(tweetHTML);
+          console.log('=== END TWEET HTML ===');
+          const allDataAttrs = await tweet.evaluate(el => {
+            const all = el.querySelectorAll('[data-testid]');
+            return [...new Set([...all].map(e => e.tagName + '#' + e.getAttribute('data-testid')))];
+          });
+          console.log('data-testid attrs:', JSON.stringify(allDataAttrs));
+        }
+
         const likeBtn = tweet.locator('div[data-testid="like"]');
         if (await likeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
           await likeBtn.click();

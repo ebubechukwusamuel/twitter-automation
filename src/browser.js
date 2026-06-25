@@ -141,27 +141,57 @@ export async function login(context, page) {
         }
       }
 
-      // Clear all username_or_email inputs and fill with phone number
+      // Fill phone into the auto-filled username field (don't clear, just overwrite)
       const cleanPhone = PHONE.replace(/^0+/, '');
       const userInputs = page.locator('input[name="username_or_email"]');
       const count = await userInputs.count();
       console.log(`Found ${count} username/email inputs`);
+
+      // Find a visible input that has the auto-filled username value
+      let target = null;
       for (let i = 0; i < count; i++) {
-        await userInputs.nth(i).fill('');
-        console.log(`Cleared input ${i}`);
+        const inp = userInputs.nth(i);
+        if (await inp.isVisible({ timeout: 500 }).catch(() => false)) {
+          const val = await inp.inputValue().catch(() => '');
+          console.log(`Input ${i}: value="${val}"`);
+          if (val === USERNAME || val === '@' + USERNAME || val) {
+            target = inp;
+            console.log(`Using input ${i} (has value "${val}")`);
+            break;
+          }
+        }
       }
-      await page.waitForTimeout(500);
-      // Fill the last (most likely the visible) input with phone number
-      if (count > 0) {
-        const target = await userInputs.nth(count - 1).isVisible() ? userInputs.nth(count - 1) : userInputs.first();
-        await target.fill(cleanPhone);
-        console.log(`Phone entered in username field: ${cleanPhone}`);
-        await page.waitForTimeout(500);
+      // Fallback to first visible
+      if (!target) {
+        for (let i = 0; i < count; i++) {
+          const inp = userInputs.nth(i);
+          if (await inp.isVisible({ timeout: 500 }).catch(() => false)) {
+            target = inp;
+            console.log(`Fallback to input ${i}`);
+            break;
+          }
+        }
       }
 
-      // Press Enter to submit
-      await page.keyboard.press('Enter');
-      console.log('Pressed Enter to submit phone');
+      if (target) {
+        // Click to focus, select all, then type the phone
+        await target.click();
+        await page.keyboard.press('Control+a');
+        await page.waitForTimeout(300);
+        await page.keyboard.type(cleanPhone, { delay: 30 });
+        console.log(`Phone entered: ${cleanPhone}`);
+        await page.waitForTimeout(1000);
+      }
+
+      // Click Continue button (not "Continue with phone")
+      const submitBtn = page.locator('button[type="submit"]:has-text("Continue"), input[type="submit"]').first();
+      if (await submitBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await submitBtn.click();
+        console.log('Clicked Continue button');
+      } else {
+        await page.keyboard.press('Enter');
+        console.log('Pressed Enter');
+      }
       await page.waitForTimeout(5000);
 
       // Handle SMS verification code if prompted

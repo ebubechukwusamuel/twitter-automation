@@ -5,16 +5,21 @@ import { resolve } from 'path';
 
 const STATE_FILE = resolve(import.meta.dirname, '..', 'state.json');
 const ENGAGEMENT_KEYWORDS = [
+  'building in public',
   'freelance designer',
   'UI UX design',
   'brand identity design',
   'web design freelance',
   'logo design',
-  'mobile app design',
   'building in public design',
-  'designer life',
+  'side project',
+  'indie maker',
   'design portfolio',
   'freelance web developer',
+  'design tools',
+  'design system',
+  'shipping product',
+  'startup design',
 ];
 
 function loadState() {

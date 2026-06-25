@@ -431,12 +431,12 @@ export async function engage(context, page, keywords) {
             await page.keyboard.type(replyText, { delay: 20 });
             await randomDelay(page, 500, 1000);
 
-            const replySubmitBtn = page.locator('div[data-testid="tweetButtonInline"]');
+            const replySubmitBtn = page.locator('button[data-testid="tweetButtonInline"]');
             if (await replySubmitBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
               await replySubmitBtn.click();
               console.log(`Replied: ${replyText}`);
               didSomething = true;
-              await page.waitForTimeout(2000);
+              await page.waitForTimeout(3000);
             } else {
               console.log(`Tweet ${tweetId}: reply submit button not found`);
             }
@@ -444,11 +444,22 @@ export async function engage(context, page, keywords) {
             console.log(`Tweet ${tweetId}: reply textarea not found`);
           }
 
+          for (let d = 0; d < 5; d++) {
+            const mask = page.locator('div[data-testid="mask"]');
+            if (await mask.isVisible({ timeout: 1500 }).catch(() => false)) {
+              await mask.click();
+              await randomDelay(page, 500, 1000);
+            } else break;
+          }
+
           const closeBtn = page.locator('button[aria-label="Close"]');
           if (await closeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
             await closeBtn.click();
             await randomDelay(page, 1000, 1500);
           }
+
+          await page.keyboard.press('Escape');
+          await randomDelay(page, 500, 1000);
         } else {
           console.log(`Tweet ${tweetId}: reply button not found`);
         }

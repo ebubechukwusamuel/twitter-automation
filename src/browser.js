@@ -214,9 +214,9 @@ export async function login(context, page) {
 
       // Handle SMS verification code if prompted
       await page.screenshot({ path: resolve(import.meta.dirname, '..', 'after-phone.png') });
-      const pageText = await page.evaluate(() => document.body.innerText).catch(() => '');
+      const postPhoneText = await page.evaluate(() => document.body.innerText).catch(() => '');
       console.log('=== AFTER PHONE PAGE TEXT ===');
-      console.log(pageText.substring(0, 2000));
+      console.log(postPhoneText.substring(0, 2000));
       console.log('=== END ===');
 
       for (let i = 0; i < 5; i++) {

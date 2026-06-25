@@ -399,16 +399,21 @@ export async function engage(context, page, keywords) {
 
       if (!tweetId || state.engaged.includes(tweetId)) continue;
 
+      let didSomething = false;
+
       try {
         const likeBtn = tweet.locator('div[data-testid="like"]');
-        if (await likeBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        if (await likeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
           await likeBtn.click();
           console.log(`Liked: ${tweetId}`);
+          didSomething = true;
           await randomDelay(page, 1000, 2000);
+        } else {
+          console.log(`Tweet ${tweetId}: like button not found`);
         }
 
         const replyBtn = tweet.locator('div[data-testid="reply"]');
-        if (await replyBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        if (await replyBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
           await replyBtn.click();
           await randomDelay(page, 1000, 2000);
 
@@ -430,8 +435,13 @@ export async function engage(context, page, keywords) {
             if (await replySubmitBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
               await replySubmitBtn.click();
               console.log(`Replied: ${replyText}`);
+              didSomething = true;
               await page.waitForTimeout(2000);
+            } else {
+              console.log(`Tweet ${tweetId}: reply submit button not found`);
             }
+          } else {
+            console.log(`Tweet ${tweetId}: reply textarea not found`);
           }
 
           const closeBtn = page.locator('button[aria-label="Close"]');
@@ -439,10 +449,16 @@ export async function engage(context, page, keywords) {
             await closeBtn.click();
             await randomDelay(page, 1000, 1500);
           }
+        } else {
+          console.log(`Tweet ${tweetId}: reply button not found`);
         }
 
-        state.engaged.push(tweetId);
-        engaged++;
+        if (didSomething) {
+          state.engaged.push(tweetId);
+          engaged++;
+        } else {
+          console.log(`Tweet ${tweetId}: skipped (no action taken)`);
+        }
       } catch (err) {
         console.log(`Failed on tweet ${tweetId}: ${err.message}`);
       }

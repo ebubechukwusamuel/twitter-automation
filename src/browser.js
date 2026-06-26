@@ -542,15 +542,11 @@ export async function engage(context, page, keywords, targetAccounts) {
     const state = loadState();
     let total = 0;
 
-    const useAccount = Math.random() < 0.6;
-
-    if (useAccount && targetAccounts?.length > 0) {
+    if (targetAccounts?.length > 0) {
       total += await engageByAccounts(page, targetAccounts, state);
     }
 
-    if (total < 2) {
-      total += await engageBySearch(page, keywords, state);
-    }
+    total += await engageBySearch(page, keywords, state);
 
     saveState(state);
     console.log(`Engaged with ${total} tweets total`);

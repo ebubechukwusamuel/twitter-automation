@@ -92,6 +92,7 @@ async function main() {
 
     const currentHour = new Date().getUTCHours();
     const shouldPost = POST_HOURS.includes(currentHour) && (mode === 'post' || mode === 'both');
+    const shouldEngage = currentHour % 2 === 0 || mode === 'engage';
 
     if (shouldPost) {
       const post = await generatePost();
@@ -121,7 +122,7 @@ async function main() {
       console.log(`Skipping post — UTC hour ${currentHour} not in posting schedule`);
     }
 
-    if (mode === 'engage' || mode === 'both') {
+    if (shouldEngage && (mode === 'engage' || mode === 'both')) {
       await engage(context, page, ENGAGEMENT_KEYWORDS, TARGET_ACCOUNTS);
       state.lastEngage = new Date().toISOString();
       writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));

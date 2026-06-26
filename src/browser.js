@@ -396,130 +396,165 @@ export async function postTweet(context, page, text, imagePath) {
   }
 }
 
-export async function engage(context, page, keywords) {
+async function engageWithTweet(page, tweet, state) {
+  const tweetLink = await tweet.locator('a[href*="/status/"]').first().getAttribute('href').catch(() => null);
+  const tweetId = tweetLink?.split('/status/')[1]?.split('?')[0];
+  if (!tweetId || state.engaged.includes(tweetId)) return false;
+
+  let didSomething = false;
+
   try {
-    const keyword = keywords[Math.floor(Math.random() * keywords.length)];
-    console.log(`Searching for: ${keyword}`);
-
-    await page.goto(`${BASE}/search?q=${encodeURIComponent(keyword)}&src=typed_query`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(5000);
-
-    const tweets = page.locator('article[data-testid="tweet"]');
-    const count = await tweets.count();
-
-    if (count === 0) {
-      console.log('No tweets found');
-      return 0;
+    const likeBtn = tweet.locator('button[data-testid="like"]');
+    if (await likeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await likeBtn.click();
+      console.log(`Liked: ${tweetId}`);
+      didSomething = true;
+      await randomDelay(page, 1000, 2000);
     }
 
-    const state = loadState();
-    let engaged = 0;
-    const maxEngage = Math.min(3, count);
+    const replyBtn = tweet.locator('button[data-testid="reply"]');
+    if (await replyBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await replyBtn.click();
+      await randomDelay(page, 1000, 2000);
 
-    for (let i = 0; i < count && engaged < maxEngage; i++) {
-      const tweet = tweets.nth(i);
-      const tweetLink = await tweet.locator('a[href*="/status/"]').first().getAttribute('href');
-      const tweetId = tweetLink?.split('/status/')[1]?.split('?')[0];
+      const replyArea = page.locator('div[data-testid="tweetTextarea_0"]');
+      if (await replyArea.isVisible({ timeout: 3000 }).catch(() => false)) {
+        const tweetTextEl = tweet.locator('div[data-testid="tweetText"]');
+        const tweetText = (await tweetTextEl.innerText().catch(() => '')) || '';
+        console.log(`Replying to: ${tweetText.substring(0, 80)}...`);
 
-      if (!tweetId || state.engaged.includes(tweetId)) continue;
+        const { generateReply, getFallbackReply } = await import('./ai.js');
+        let replyText = await generateReply(tweetText, 'user');
+        if (!replyText) replyText = getFallbackReply();
 
-      let didSomething = false;
+        await replyArea.click();
+        await page.keyboard.type(replyText, { delay: 20 });
+        await randomDelay(page, 500, 1000);
 
-      try {
-        const likeBtn = tweet.locator('button[data-testid="like"]');
-        if (await likeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await likeBtn.click();
-          console.log(`Liked: ${tweetId}`);
+        let submitted = false;
+        const submitSelectors = [
+          'button[data-testid="tweetButtonInline"]',
+          'div[data-testid="tweetButtonInline"]',
+          'button[data-testid="tweetButton"]',
+          'div[data-testid="tweetButton"]',
+        ];
+        for (const sel of submitSelectors) {
+          const btn = page.locator(sel).first();
+          if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+            await btn.click();
+            console.log(`Replied via ${sel}`);
+            submitted = true;
+            break;
+          }
+        }
+        if (!submitted) {
+          await page.keyboard.press('Control+Enter');
+          console.log(`Replied via Ctrl+Enter`);
+          submitted = true;
+        }
+        if (submitted) {
           didSomething = true;
-          await randomDelay(page, 1000, 2000);
-        } else {
-          console.log(`Tweet ${tweetId}: like button not found`);
+          await page.waitForTimeout(3000);
         }
+      }
 
-        const replyBtn = tweet.locator('button[data-testid="reply"]');
-        if (await replyBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await replyBtn.click();
-          await randomDelay(page, 1000, 2000);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(1000);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(1000);
 
-          const replyArea = page.locator('div[data-testid="tweetTextarea_0"]');
-          if (await replyArea.isVisible({ timeout: 3000 }).catch(() => false)) {
-            const tweetTextEl = tweet.locator('div[data-testid="tweetText"]');
-            const tweetText = (await tweetTextEl.innerText().catch(() => '')) || '';
-            console.log(`Replying to: ${tweetText.substring(0, 80)}...`);
+      const closeBtn = page.locator('button[aria-label="Close"]');
+      if (await closeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await closeBtn.click();
+        await randomDelay(page, 1000, 1500);
+      }
 
-            const { generateReply, getFallbackReply } = await import('./ai.js');
-            let replyText = await generateReply(tweetText, 'user');
-            if (!replyText) replyText = getFallbackReply();
-
-            await replyArea.click();
-            await page.keyboard.type(replyText, { delay: 20 });
-            await randomDelay(page, 500, 1000);
-
-            let submitted = false;
-            const submitSelectors = [
-              'button[data-testid="tweetButtonInline"]',
-              'div[data-testid="tweetButtonInline"]',
-              'button[data-testid="tweetButton"]',
-              'div[data-testid="tweetButton"]',
-            ];
-            for (const sel of submitSelectors) {
-              const btn = page.locator(sel).first();
-              if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
-                await btn.click();
-                console.log(`Replied via ${sel}`);
-                submitted = true;
-                break;
-              }
-            }
-            if (!submitted) {
-              await page.keyboard.press('Control+Enter');
-              console.log(`Replied via Ctrl+Enter`);
-              submitted = true;
-            }
-            if (submitted) {
-              didSomething = true;
-              await page.waitForTimeout(3000);
-            } else {
-              console.log(`Tweet ${tweetId}: could not submit reply`);
-            }
-          } else {
-            console.log(`Tweet ${tweetId}: reply textarea not found`);
-          }
-
-          await page.keyboard.press('Escape');
-          await page.waitForTimeout(1000);
-          await page.keyboard.press('Escape');
-          await page.waitForTimeout(1000);
-
-          const closeBtn = page.locator('button[aria-label="Close"]');
-          if (await closeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await closeBtn.click();
-            await randomDelay(page, 1000, 1500);
-          }
-
-          const mask = page.locator('div[data-testid="mask"]');
-          if (await mask.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await mask.click({ force: true });
-            await page.waitForTimeout(1000);
-          }
-        } else {
-          console.log(`Tweet ${tweetId}: reply button not found`);
-        }
-
-        if (didSomething) {
-          state.engaged.push(tweetId);
-          engaged++;
-        } else {
-          console.log(`Tweet ${tweetId}: skipped (no action taken)`);
-        }
-      } catch (err) {
-        console.log(`Failed on tweet ${tweetId}: ${err.message}`);
+      const mask = page.locator('div[data-testid="mask"]');
+      if (await mask.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await mask.click({ force: true });
+        await page.waitForTimeout(1000);
       }
     }
 
+    if (didSomething) {
+      state.engaged.push(tweetId);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.log(`Failed on tweet ${tweetId}: ${err.message}`);
+    return false;
+  }
+}
+
+async function engageBySearch(page, keywords, state) {
+  const keyword = keywords[Math.floor(Math.random() * keywords.length)];
+  console.log(`Searching for: ${keyword}`);
+
+  await page.goto(`${BASE}/search?q=${encodeURIComponent(keyword)}&src=typed_query&f=top`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForTimeout(5000);
+
+  const tweets = page.locator('article[data-testid="tweet"]');
+  const count = await tweets.count();
+  if (count === 0) {
+    console.log('No tweets found');
+    return 0;
+  }
+
+  let engaged = 0;
+  const maxEngage = Math.min(3, count);
+
+  for (let i = 0; i < count && engaged < maxEngage; i++) {
+    const tweet = tweets.nth(i);
+    if (await engageWithTweet(page, tweet, state)) engaged++;
+  }
+
+  return engaged;
+}
+
+async function engageByAccounts(page, accounts, state) {
+  const account = accounts[Math.floor(Math.random() * accounts.length)];
+  console.log(`Visiting @${account}'s profile`);
+
+  await page.goto(`${BASE}/${account}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForTimeout(4000);
+
+  const tweets = page.locator('article[data-testid="tweet"]');
+  const count = await tweets.count();
+  if (count === 0) {
+    console.log(`No tweets from @${account}`);
+    return 0;
+  }
+
+  let engaged = 0;
+  const maxEngage = Math.min(2, count);
+
+  for (let i = 0; i < count && engaged < maxEngage; i++) {
+    const tweet = tweets.nth(i);
+    if (await engageWithTweet(page, tweet, state)) engaged++;
+  }
+
+  return engaged;
+}
+
+export async function engage(context, page, keywords, targetAccounts) {
+  try {
+    const state = loadState();
+    let total = 0;
+
+    const useAccount = Math.random() < 0.6;
+
+    if (useAccount && targetAccounts?.length > 0) {
+      total += await engageByAccounts(page, targetAccounts, state);
+    }
+
+    if (total < 2) {
+      total += await engageBySearch(page, keywords, state);
+    }
+
     saveState(state);
-    console.log(`Engaged with ${engaged} tweets`);
-    return engaged;
+    console.log(`Engaged with ${total} tweets total`);
+    return total;
   } catch (err) {
     console.error('Engage failed:', err.message);
     await page.screenshot({ path: resolve(import.meta.dirname, '..', 'engage-error.png') });

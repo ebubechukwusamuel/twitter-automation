@@ -5,21 +5,47 @@ import { resolve } from 'path';
 
 const STATE_FILE = resolve(import.meta.dirname, '..', 'state.json');
 const ENGAGEMENT_KEYWORDS = [
+  'tech twitter',
+  'software engineering',
+  'web development',
+  'product design',
+  'startup life',
+  'coding',
+  'founder',
+  'SaaS',
+  'frontend',
+  'UI design',
   'building in public',
-  'freelance designer',
-  'UI UX design',
-  'brand identity design',
-  'web design freelance',
-  'logo design',
-  'building in public design',
-  'side project',
-  'indie maker',
-  'design portfolio',
-  'freelance web developer',
-  'design tools',
-  'design system',
-  'shipping product',
-  'startup design',
+  'programming',
+  'building products',
+  'tech career',
+  'developer',
+];
+
+const TARGET_ACCOUNTS = [
+  'levelsio',
+  'shadcn',
+  'rauchg',
+  'dan_abramov',
+  'acdlite',
+  'steventey',
+  'devtools_fm',
+  'sundarpichai',
+  'elonmusk',
+  'naval',
+  'jackbutcher',
+  'mxstbr',
+  'leerob',
+  'bitandbang',
+  'swyx',
+  't3dotgg',
+  'hhg_',
+  'framer',
+  'tailwindcss',
+  'vercel',
+  'nextjs',
+  'reactjs',
+  'figmadesign',
 ];
 
 function loadState() {
@@ -75,7 +101,7 @@ async function main() {
         : Infinity;
 
       if (hoursSinceEngage >= 2 || mode !== 'both') {
-        await engage(context, page, ENGAGEMENT_KEYWORDS);
+        await engage(context, page, ENGAGEMENT_KEYWORDS, TARGET_ACCOUNTS);
         state.lastEngage = new Date().toISOString();
         writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
       } else {

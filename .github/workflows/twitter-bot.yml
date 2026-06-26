@@ -2,7 +2,7 @@ name: Twitter Bot
 
 on:
   schedule:
-    - cron: '0 6,8,10,12,14,16,18,20 * * *'
+    - cron: '0 */2 * * *'
   workflow_dispatch:
     inputs:
       mode:

@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync, readdirSync } from 'fs';
 import { resolve } from 'path';
 
 const STATE_FILE = resolve(import.meta.dirname, '..', 'state.json');
+const POST_HOURS = [6, 8, 10, 12, 14, 16, 18, 20];
 const ENGAGEMENT_KEYWORDS = [
   'tech twitter',
   'software engineering',
@@ -69,7 +70,10 @@ async function main() {
 
     const loggedIn = await ensureLoggedIn(context, page);
 
-    if (mode === 'post' || mode === 'both') {
+    const currentHour = new Date().getUTCHours();
+    const shouldPost = POST_HOURS.includes(currentHour) && (mode === 'post' || mode === 'both');
+
+    if (shouldPost) {
       const post = await generatePost();
       let text = post?.text;
       let imagePath = null;
@@ -93,20 +97,14 @@ async function main() {
       }
 
       await postTweet(context, page, text, imagePath);
+    } else {
+      console.log(`Skipping post — UTC hour ${currentHour} not in posting schedule`);
     }
 
     if (mode === 'engage' || mode === 'both') {
-      const hoursSinceEngage = state.lastEngage
-        ? (Date.now() - new Date(state.lastEngage).getTime()) / 3600000
-        : Infinity;
-
-      if (hoursSinceEngage >= 2 || mode !== 'both') {
-        await engage(context, page, ENGAGEMENT_KEYWORDS, TARGET_ACCOUNTS);
-        state.lastEngage = new Date().toISOString();
-        writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
-      } else {
-        console.log('Skipping engage — last engagement was <2h ago');
-      }
+      await engage(context, page, ENGAGEMENT_KEYWORDS, TARGET_ACCOUNTS);
+      state.lastEngage = new Date().toISOString();
+      writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
     }
 
     console.log('Done');

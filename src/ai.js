@@ -63,21 +63,43 @@ export async function generateTweet(topic) {
   return text ? parseTweet(text) : null;
 }
 
-export async function generatePost() {
-  const prompt = `${PERSONA}\n\nWrite one tweet (under 280 characters) about design, development, freelancing, or building in public. Make it sound completely natural.
-After the tweet, on a new line, write INCLUDE_IMAGE: true or INCLUDE_IMAGE: false. Include an image if the tweet is about showing work, sharing a project, a design tip, code snippet, or something visual. Skip image for general thoughts, opinions, or personal updates.
+export async function generatePost(withImage = false) {
+  let prompt
+  if (withImage) {
+    prompt = `${PERSONA}\n\nWrite one tweet (under 280 characters) about something you're currently working on, a project you recently finished, a behind-the-scenes look at your workflow, or your work environment. Make it sound completely natural — like you're sharing a quick update. Mention what you're building or designing.
+
+Focus on these topics:
+- What you're currently working on
+- A project you've completed (UI design, brand identity, website, app)
+- Behind-the-scenes of your workflow / tools
+- Your work environment or setup
+- A design or dev challenge you solved
+
+After the tweet, on a new line, write IMAGE_TYPE: followed by one of: project, code, design, mobile, general. Pick the closest match to the tweet.
+- project: tweet about a specific finished project or client work
+- code: tweet about coding, development workflow, tools
+- design: tweet about UI/UX, brand identity, visual design
+- mobile: general or personal update
+- general: anything else
 
 Example output:
-Just finished a brand identity project for a fintech startup. The color palette took the longest but it came together beautifully.
-INCLUDE_IMAGE: true`;
+Just shipped a complete brand identity for a health startup. Logo, color system, typography, the whole thing. Client loved it.
+IMAGE_TYPE: design`
+  } else {
+    prompt = `${PERSONA}\n\nWrite one tweet (under 280 characters) about design, development, freelancing, or building in public. Make it sound completely natural — a thought, opinion, or personal reflection.`
+  }
 
   const result = await generateWithRetry(prompt);
-  if (!result) return { text: null, includeImage: false };
+  if (!result) return { text: null, imageType: null };
 
   const lines = result.trim().split('\n');
-  const includeImage = lines.some(l => l.includes('INCLUDE_IMAGE: true'));
-  const text = parseTweet(lines.filter(l => !l.includes('INCLUDE_IMAGE:')).join('\n'));
-  return { text, includeImage };
+  let imageType = null;
+  const typeLine = lines.find(l => l.startsWith('IMAGE_TYPE:'));
+  if (typeLine) {
+    imageType = typeLine.replace('IMAGE_TYPE:', '').trim().toLowerCase();
+  }
+  const text = parseTweet(lines.filter(l => !l.startsWith('IMAGE_TYPE:')).join('\n'));
+  return { text, imageType };
 }
 
 export async function generateReply(tweetText, username) {

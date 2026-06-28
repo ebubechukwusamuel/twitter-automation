@@ -391,11 +391,56 @@ export async function postTweet(context, page, text, imagePath) {
 
     if (tweetBtn) {
       await tweetBtn.click();
+      console.log('Clicked tweet button');
     } else {
       await page.keyboard.press('Control+Enter');
+      console.log('Sent via Ctrl+Enter');
     }
 
-    await page.waitForTimeout(4000);
+    // Verify the compose dialog actually closed (confirm post went through)
+    const dialogSelectors = [
+      'div[data-testid="sheetDialog"]',
+      'div[role="dialog"]',
+      'div[aria-labelledby="modal-header"]',
+      'div[data-testid="tweetTextarea_0"]',
+    ];
+
+    let posted = false;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      await page.waitForTimeout(1000);
+
+      // Check if compose dialog is still open
+      let stillOpen = false;
+      for (const sel of dialogSelectors) {
+        const el = page.locator(sel).first();
+        if (await el.isVisible({ timeout: 300 }).catch(() => false)) {
+          stillOpen = true;
+          break;
+        }
+      }
+
+      if (!stillOpen) {
+        posted = true;
+        break;
+      }
+
+      // On last 2 attempts, try submitting again
+      if (attempt >= 7) {
+        if (tweetBtn) {
+          await tweetBtn.click({ timeout: 2000 }).catch(() => {});
+        } else {
+          await page.keyboard.press('Control+Enter');
+        }
+      }
+    }
+
+    if (!posted) {
+      console.log('Post failed — compose dialog did not close');
+      await page.screenshot({ path: resolve(import.meta.dirname, '..', 'post-failed-modal.png') });
+      return false;
+    }
+
+    await randomDelay(page, 1500, 2500);
     console.log(`Posted: ${text}`);
 
     const state = loadState();

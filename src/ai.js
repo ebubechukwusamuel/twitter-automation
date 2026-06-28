@@ -19,9 +19,25 @@ function loadEnv() {
 const env = loadEnv();
 const groq = new Groq({ apiKey: env.GROQ_API_KEY || env.GROC_API_kEY });
 
-const PERSONA = `You are Ebube, a freelance designer and developer in Nigeria. You tweet about design, development, freelancing, and building in public. Your tweets are casual, conversational, and authentic — like a real person sharing their thoughts, not a marketing bot. You use natural language, occasional abbreviations, and write like you're talking to a friend. No hashtags. No emojis. Just real talk.
+const PERSONA = `You are Ebube (Ebubechukwu Samuel), a Nigerian freelance designer & developer and founder of Mazion. You tweet about what you're ACTUALLY building — real projects, real code, real design work. Your tweets are casual, conversational, and authentic. You use natural language, occasional abbreviations, and write like you're talking to a friend. No hashtags. No emojis. Just real talk.
 
-IMPORTANT: Never post anything about the "Mr Elijah" project or any work related to it. Do not mention or reference it in any tweet.`;
+REAL PROJECTS YOU'VE BUILT (reference these):
+- Flowtrack: project management web app with real-time chat, task management, teams (Next.js, Prisma, PeerJS, Three.js)
+- Kredo: all-in-one freelancer OS — proposals, contracts, invoices, time tracking, client portal (Next.js, shadcn/ui, Prisma, Paystack, Stripe, n8n)
+- Spyglass: CLI tool that indexes codebases with vector embeddings and answers questions via RAG (Node.js, Ollama, OpenAI, SQLite)
+- Portfolio: ebubesamuel.vercel.app — your personal portfolio site
+- Mazion Instagram: visual content strategy and HTML/CSS carousel designs for your brand
+- LinkedIn Optimizer: n8n automation workflow that scrapes profiles and generates optimized rewrites via GPT-4o
+- Elijah Website: portfolio site for a food systems researcher (Next.js, Notion CMS)
+- Twitter Automation: this exact bot you're tweeting from
+
+YOUR TOOLS: Figma, Illustrator, Photoshop, VS Code, Next.js, React, Tailwind, Flutter, React Native, Prisma, Postgres, n8n, Git
+
+YOUR SERVICES: Brand identity, website design & development, mobile apps, UI/UX design, brand strategy
+
+IMPORTANT: Never post about the "Mr Elijah" project or reference it. Don't mention it.
+
+IMPORTANT: Don't lie. Only tweet about your actual work and experience. If you don't have experience with something, don't pretend you do.`;
 
 function parseTweet(text) {
   return text.replace(/^["']|["']$/g, '').replace(/^Tweet:\s*/i, '').trim();
@@ -66,27 +82,43 @@ export async function generateTweet(topic) {
 export async function generatePost(withImage = false) {
   let prompt
   if (withImage) {
-    prompt = `${PERSONA}\n\nWrite one tweet (under 280 characters) about something you're currently working on, a project you recently finished, a behind-the-scenes look at your workflow, or your work environment. Make it sound completely natural — like you're sharing a quick update. Mention what you're building or designing.
+    prompt = `${PERSONA}\n\nWrite one tweet (under 280 characters) about your ACTUAL current work or a real project you've built. Be specific — name the project, the tech, the challenge. Make it sound like a genuine update, not marketing.
 
-Focus on these topics:
-- What you're currently working on
-- A project you've completed (UI design, brand identity, website, app)
-- Behind-the-scenes of your workflow / tools
-- Your work environment or setup
-- A design or dev challenge you solved
+Focus on these REAL topics:
+- What you're working on right now (Flowtrack, Kredo, Spyglass, or client work)
+- A real project you've shipped (name it)
+- Behind-the-scenes of your actual workflow / tools
+- A design or dev challenge you actually solved
+- Freelancing lessons from your real experience
 
 After the tweet, on a new line, write IMAGE_TYPE: followed by one of: project, code, design, mobile, general. Pick the closest match to the tweet.
-- project: tweet about a specific finished project or client work
-- code: tweet about coding, development workflow, tools
-- design: tweet about UI/UX, brand identity, visual design
-- mobile: general or personal update
+- project: tweet is about a specific project (Flowtrack, Kredo, Spyglass, portfolio, client site)
+- code: tweet about coding, dev workflow, tools, debugging
+- design: tweet about UI/UX, brand identity, Figma, visual design
+- mobile: general update, freelancing, personal
 - general: anything else
 
 Example output:
-Just shipped a complete brand identity for a health startup. Logo, color system, typography, the whole thing. Client loved it.
-IMAGE_TYPE: design`
+Been refactoring Flowtrack's real-time chat to use PeerJS instead of polling. Way fewer requests and messages appear instantly.
+IMAGE_TYPE: code
+
+Example output:
+Just finished the Kredo invoice PDF generator. Download link, line items, Paystack payment link — all in one clean template.
+IMAGE_TYPE: project
+
+Example output:
+Three years freelancing and I've learned: charge by value not by hour, always use contracts, and track every single minute. The tools matter less than the habits.
+IMAGE_TYPE: general
+
+Example output:
+Designed a full brand identity for a fintech client yesterday. Logo, type scale, color tokens, component library in Figma. Clean and systematic.
+IMAGE_TYPE: design
+
+Example output:
+Reorganized my entire VS Code workspace today. Project templates, consistent folder structure, shared ESLint/Prettier configs across all repos.
+IMAGE_TYPE: code`
   } else {
-    prompt = `${PERSONA}\n\nWrite one tweet (under 280 characters) about design, development, freelancing, or building in public. Make it sound completely natural — a thought, opinion, or personal reflection.`
+    prompt = `${PERSONA}\n\nWrite one tweet (under 280 characters) about freelancing, design, or development from YOUR real experience. A genuine thought or lesson learned building projects like Flowtrack, Kredo, Spyglass, or doing client work. Keep it authentic — no made-up stories.`
   }
 
   const result = await generateWithRetry(prompt);
@@ -103,26 +135,27 @@ IMAGE_TYPE: design`
 }
 
 export async function generateReply(tweetText, username) {
-  const prompt = `${PERSONA}\n\nSomeone tweeted this:\n"${tweetText}"\n— by @${username}\n\nWrite a natural reply (under 200 characters) that sounds like a real person engaging with their content. Be thoughtful and specific to what they said. No hashtags. No emojis. Just the reply text.`;
+  const prompt = `${PERSONA}\n\nSomeone tweeted this:\n"${tweetText}"\n— by @${username}\n\nWrite a natural reply (under 200 characters) that sounds like a genuine person engaging with their content. Be specific to what they said. No hashtags. No emojis. Just the reply text.`;
   const text = await generateWithRetry(prompt);
   return text ? parseTweet(text) : null;
 }
 
 const FALLBACK_TWEETS = [
-  "Just wrapped up a brand identity project. Love when a client gives full creative freedom — those always turn out the best.",
-  "Spent the morning refactoring a React component. Went from 200 lines to 60. Feels good.",
+  "Been refactoring Flowtrack's real-time chat to use PeerJS instead of polling. Way fewer requests and messages appear instantly.",
+  "Just shipped the Kredo invoice system. PDF download, Paystack payment link, line items — all in one clean template.",
+  "Spent the morning cleaning up Prisma queries in Flowtrack. Cut about 40% of database calls by batching relations properly.",
   "Hot take: most freelancers undercharge because they don't track their time properly. Start tracking everything. You'll thank yourself.",
-  "Building a new landing page template this week. Goal: make it convert without being salesy. There's a sweet spot.",
-  "Three years into freelancing and I'm still learning new things every week. That's the best part.",
+  "Three years freelancing and I'm still learning new things every week. That's the best part.",
   "Design tip: when in doubt, add more whitespace. Works every time.",
   "Nothing beats the feeling of shipping a project you're genuinely proud of.",
-  "Client asked for 'minimal but vibrant' today. Took me a second. But I think I nailed it.",
-  "The gap between 'I can design this' and 'I can code this' is shrinking every year. Gotta keep up.",
-  "Just discovered a Figma plugin that saves me 2 hours per project. Game changer.",
+  "Built a CLI tool called Spyglass that indexes codebases with vector embeddings. Basically grep that understands your code.",
   "Freelancing isn't about being your own boss. It's about being your own IT, sales, marketing, accounting, and legal department. Still worth it though.",
-  "Working on a mobile app UI right now. The challenge is making complex features feel simple.",
+  "Working on a multi-tenant app right now. The challenge is making complex permissions feel simple.",
   "Consistency > perfection. Ship it, iterate, ship again.",
-  "Tried a new CSS technique today that I've been putting off for months. Took 10 minutes.",
+  "Just set up n8n to automate LinkedIn profile rewrites with GPT-4o. Scrapes the profile, generates optimized copy, uploads to Drive.",
+  "Setting up consistent ESLint, Prettier, and TS configs across all my projects. Future me will be grateful.",
+  "The gap between 'I can design this' and 'I can code this' is shrinking every year. Gotta keep up.",
+  "Building a freelancer OS called Kredo. Proposals, contracts, invoices, time tracking — all in one place. Replaces 5 tools.",
   "Spent the whole afternoon tweaking margins. Worth it. Design is in the details.",
   "Some clients think good design is expensive until they see what bad design costs them.",
   "Took a 2 hour break from screens today. Came back and fixed a bug in 5 minutes. Coincidence? I think not.",

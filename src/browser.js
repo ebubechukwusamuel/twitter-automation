@@ -316,24 +316,38 @@ export async function postTweet(context, page, text, imagePath) {
 
     if (imagePath && existsSync(imagePath)) {
       try {
-        const fileInput = page.locator('input[data-testid="fileInput"]');
-        if (await fileInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await fileInput.setInputFiles(imagePath);
-          console.log('Image attached:', imagePath);
-          await page.waitForTimeout(3000);
-        } else {
-          const chooseBtn = page.locator('button[data-testid="fileInput"]');
-          if (await chooseBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-            const input = page.locator('input[type="file"]').first();
-            await input.setInputFiles(imagePath);
-            console.log('Image attached via fallback input');
-            await page.waitForTimeout(3000);
-          } else {
-            console.log('No file input found, posting without image');
+        // Click the media/gallery button to reveal file input
+        const mediaBtnSelectors = [
+          'button[data-testid="attachmentsButton"]',
+          'button[aria-label="Media"]',
+          'button[aria-label="Add photos or video"]',
+          'div[aria-label="Add photos or video"]',
+          'button:has(svg[aria-label*="media"])',
+          'button:has(svg path[d*="M19.75"])',  // common X media icon path
+        ];
+        for (const sel of mediaBtnSelectors) {
+          const btn = page.locator(sel).first();
+          if (await btn.count() > 0 && await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+            await btn.click();
+            console.log('Clicked media button');
+            await page.waitForTimeout(1500);
+            break;
           }
         }
+
+        // Directly set the file on any file input (may be hidden)
+        const allFileInputs = page.locator('input[type="file"]');
+        const count = await allFileInputs.count();
+        if (count > 0) {
+          await allFileInputs.first().setInputFiles(imagePath);
+          console.log('Image attached');
+          await page.waitForTimeout(3000);
+        } else {
+          console.log('No file input found — posting text-only');
+        }
       } catch (imgErr) {
-        console.log('Failed to attach image:', imgErr.message);
+        console.log('Image attach failed:', imgErr.message);
+        await page.screenshot({ path: resolve(import.meta.dirname, '..', 'attach-error.png') });
       }
     }
 

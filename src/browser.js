@@ -57,12 +57,13 @@ export async function createSession() {
 export async function login(context, page) {
   try {
     console.log('Logging in to Twitter...');
-    await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.goto(`${BASE}/i/flow/login`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(6000);
 
     const inputSelectors = [
-      'input[autocomplete="username"]',
+      'input[autocomplete="username webauthn"]',
       'input[name="text"]',
+      'input[name="username_or_email"]',
       'input[type="email"]',
       'input[type="text"]',
     ];
@@ -82,22 +83,38 @@ export async function login(context, page) {
 
     await textInput.fill(USERNAME);
     await page.waitForTimeout(1000);
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(3000);
 
-    const passwordInput = page.locator('input[name="password"]');
-    if (await passwordInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await passwordInput.fill(PASSWORD);
+    // On new X onboarding, password may already be visible
+    let pw = page.locator('input[name="password"]');
+    if (await pw.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await pw.fill(PASSWORD);
+      console.log('Password entered alongside username');
       await page.waitForTimeout(500);
-      await page.keyboard.press('Enter');
+      // Try clicking a submit/next button first
+      const nextBtn = page.locator('button[type="submit"], button:has-text("Next"), button:has-text("Log in"), button:has-text("Sign in")').first();
+      if (await nextBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await nextBtn.click();
+      } else {
+        await page.keyboard.press('Enter');
+      }
     } else {
-      const textInput2 = page.locator('input[type="email"]');
-      if (await textInput2.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await textInput2.fill(env.TWITTER_EMAIL || USERNAME);
+      // Traditional separate username step
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(3000);
+      pw = page.locator('input[name="password"]');
+      if (await pw.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await pw.fill(PASSWORD);
+        await page.waitForTimeout(500);
         await page.keyboard.press('Enter');
-        await page.waitForTimeout(3000);
-        await page.locator('input[name="password"]').fill(PASSWORD);
-        await page.keyboard.press('Enter');
+      } else {
+        const textInput2 = page.locator('input[type="email"]');
+        if (await textInput2.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await textInput2.fill(env.TWITTER_EMAIL || USERNAME);
+          await page.keyboard.press('Enter');
+          await page.waitForTimeout(3000);
+          await page.locator('input[name="password"]').fill(PASSWORD);
+          await page.keyboard.press('Enter');
+        }
       }
     }
 
@@ -106,102 +123,39 @@ export async function login(context, page) {
     console.log('Login submitted, URL:', page.url());
 
     if (page.url().includes('onboarding')) {
-      console.log('Onboarding page detected, handling phone verification...');
+      console.log('Onboarding page detected, trying email/username route...');
 
-      // First, dump all inputs to understand the page structure
-      const inputInfo = await page.evaluate(() =>
-        [...document.querySelectorAll('input, button, select')].map(el => ({
-          tag: el.tagName,
-          type: el.getAttribute('type') || '',
-          name: el.getAttribute('name') || '',
-          placeholder: el.getAttribute('placeholder') || '',
-          text: (el.textContent || '').trim().substring(0, 30),
-          id: el.getAttribute('id') || '',
-          'aria-label': el.getAttribute('aria-label') || '',
-          autocomplete: el.getAttribute('autocomplete') || '',
-          inputmode: el.getAttribute('inputmode') || '',
-          visible: el.offsetParent !== null,
-          class: el.className?.substring(0, 40) || '',
-        }))
-      );
-      console.log('=== PHONE PAGE INPUTS ===');
-      inputInfo.forEach((inf, i) => console.log(`  ${i}: <${inf.tag}> type=${inf.type} placeholder="${inf.placeholder}" name="${inf.name}" text="${inf.text}" visible=${inf.visible} auto="${inf.autocomplete}" mode="${inf.inputmode}" aria="${inf['aria-label']}"`));
-      console.log('=== END ===');
-
-      // The page shows "Enter your phone number" with a username_or_email field.
-      // X.com uses a universal input - phone number goes into the same field.
-      // First, click "Continue with phone" to ensure we're in phone mode
-      const pageText2 = await page.evaluate(() => document.body.innerText).catch(() => '');
-      if (pageText2.includes('Continue with phone') && !pageText2.includes('Enter your')) {
-        const phoneModeBtn = page.locator('button:has-text("Continue with phone")').first();
-        if (await phoneModeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await phoneModeBtn.click();
-          console.log('Clicked "Continue with phone" to select phone mode');
-          await page.waitForTimeout(2000);
-        }
+      // Click "Email or username" to skip phone verification
+      const emailLink = page.locator('a, span, div, button', { hasText: 'Email or username' }).first();
+      if (await emailLink.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await emailLink.click({ force: true });
+        console.log('Clicked Email or username');
+        await page.waitForTimeout(3000);
       }
 
-      // Fill phone into the auto-filled username field (don't clear, just overwrite)
-      const cleanPhone = PHONE.replace(/^0+/, '');
-      const userInputs = page.locator('input[name="username_or_email"]');
-      const count = await userInputs.count();
-      console.log(`Found ${count} username/email inputs`);
-
-      // Find a visible input that has the auto-filled username value
-      let target = null;
-      for (let i = 0; i < count; i++) {
-        const inp = userInputs.nth(i);
-        if (await inp.isVisible({ timeout: 500 }).catch(() => false)) {
-          const val = await inp.inputValue().catch(() => '');
-          console.log(`Input ${i}: value="${val}"`);
-          if (val === USERNAME || val === '@' + USERNAME || val) {
-            target = inp;
-            console.log(`Using input ${i} (has value "${val}")`);
-            break;
-          }
-        }
+      // Fill username and password
+      const userInput = page.locator('input[name="username_or_email"]').first();
+      if (await userInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await userInput.fill(USERNAME);
+        await page.waitForTimeout(500);
       }
-      // Fallback to first visible
-      if (!target) {
-        for (let i = 0; i < count; i++) {
-          const inp = userInputs.nth(i);
-          if (await inp.isVisible({ timeout: 500 }).catch(() => false)) {
-            target = inp;
-            console.log(`Fallback to input ${i}`);
-            break;
-          }
-        }
+      const pwInput = page.locator('input[name="password"]').first();
+      if (await pwInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await pwInput.fill(PASSWORD);
+        await page.waitForTimeout(500);
       }
 
-      if (target) {
-        // Click to focus, select all, then type the phone
-        await target.click();
-        await page.keyboard.press('Control+a');
-        await page.waitForTimeout(300);
-        await page.keyboard.type(cleanPhone, { delay: 30 });
-        console.log(`Phone entered: ${cleanPhone}`);
-        await page.waitForTimeout(1000);
-      }
-
-      // Click Continue button (not "Continue with phone")
-      const submitBtn = page.locator('button[type="submit"]:has-text("Continue"), input[type="submit"]').first();
-      if (await submitBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await submitBtn.click();
-        console.log('Clicked Continue button');
+      // Submit
+      const loginBtn = page.locator('button[type="submit"], button:has-text("Log in"), button:has-text("Sign in")').first();
+      if (await loginBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await loginBtn.click();
+        console.log('Clicked login button');
       } else {
         await page.keyboard.press('Enter');
-        console.log('Pressed Enter');
       }
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(4000);
 
-      // Handle SMS verification code if prompted
-      await page.screenshot({ path: resolve(import.meta.dirname, '..', 'after-phone.png') });
-      const postPhoneText = await page.evaluate(() => document.body.innerText).catch(() => '');
-      console.log('=== AFTER PHONE PAGE TEXT ===');
-      console.log(postPhoneText.substring(0, 2000));
-      console.log('=== END ===');
-
-      // Wait for SMS code input or timeline
+      // Wait for the timeline to appear
       for (let i = 0; i < 10; i++) {
         const url = page.url();
         if (!url.includes('onboarding') && !url.includes('login')) {
@@ -209,42 +163,16 @@ export async function login(context, page) {
           break;
         }
 
-        // Check for SMS verification code inputs (6 individual boxes)
-        const codeInputs = page.locator('input[inputmode="numeric"]');
-        const codeCount = await codeInputs.count();
-        if (codeCount >= 4) {
-          console.log(`Found ${codeCount} SMS code inputs!`);
-          console.log('SMS verification code required. Please check your phone.');
-          // Check if TWITTER_SMS_CODE env var is set
-          const smsCode = env.TWITTER_SMS_CODE || '';
-          if (smsCode) {
-            console.log('TWITTER_SMS_CODE found, entering code...');
-            const firstInput = await codeInputs.first();
-            await firstInput.click();
-            await page.keyboard.type(smsCode, { delay: 100 });
-            await page.waitForTimeout(2000);
-            // Wait for the next step
-            await page.waitForTimeout(5000);
-          } else {
-            console.log('No SMS code available - cannot proceed with CI login.');
-            console.log('Alternative: run locally once and upload auth.json as secret.');
-            break;
-          }
-          break;
-        }
-
-        // Check for "Try again" or error messages
-        const tryAgainBtn = page.locator('button:has-text("Try again"), button:has-text("Resend")');
-        if (await tryAgainBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
-          console.log('Error occurred - try again button visible');
-          await page.screenshot({ path: resolve(import.meta.dirname, '..', 'phone-error.png') });
-          break;
-        }
-
-        // If we see primaryColumn, we're done
         const primaryCol = page.locator('div[data-testid="primaryColumn"]');
         if (await primaryCol.isVisible({ timeout: 2000 }).catch(() => false)) {
           console.log('Timeline reached!');
+          break;
+        }
+
+        // Check for SMS code inputs
+        const codeInputs = page.locator('input[inputmode="numeric"]');
+        if (await codeInputs.count() >= 4) {
+          console.log('SMS verification required. Run save-auth script instead.');
           break;
         }
 
@@ -455,10 +383,28 @@ export async function postTweet(context, page, text, imagePath) {
   }
 }
 
+function isReadableTweet(text) {
+  if (!text || text.trim().length < 10) return false;
+  const cleaned = text.trim();
+  const linkRatio = (cleaned.match(/https?:\/\/\S+/g) || []).join('').length / cleaned.length;
+  if (linkRatio > 0.6) return false;
+  return true;
+}
+
 async function engageWithTweet(page, tweet, state) {
   const tweetLink = await tweet.locator('a[href*="/status/"]').first().getAttribute('href').catch(() => null);
   const tweetId = tweetLink?.split('/status/')[1]?.split('?')[0];
   if (!tweetId || state.engaged.includes(tweetId)) return false;
+
+  const tweetTextEl = tweet.locator('div[data-testid="tweetText"]');
+  const tweetText = (await tweetTextEl.innerText().catch(() => '')) || '';
+
+  if (!isReadableTweet(tweetText)) {
+    console.log(`Skipping tweet ${tweetId} — unreadable content`);
+    return false;
+  }
+
+  console.log(`Engaging with: ${tweetText.substring(0, 80)}...`);
 
   let didSomething = false;
 
@@ -478,42 +424,45 @@ async function engageWithTweet(page, tweet, state) {
 
       const replyArea = page.locator('div[data-testid="tweetTextarea_0"]');
       if (await replyArea.isVisible({ timeout: 3000 }).catch(() => false)) {
-        const tweetTextEl = tweet.locator('div[data-testid="tweetText"]');
-        const tweetText = (await tweetTextEl.innerText().catch(() => '')) || '';
-        console.log(`Replying to: ${tweetText.substring(0, 80)}...`);
+        const { generateReply } = await import('./ai.js');
+        const replyText = await generateReply(tweetText, 'user');
 
-        const { generateReply, getFallbackReply } = await import('./ai.js');
-        let replyText = await generateReply(tweetText, 'user');
-        if (!replyText) replyText = getFallbackReply();
+        if (!replyText) {
+          console.log(`Skipping reply — couldn't generate meaningful response`);
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(1000);
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(1000);
+        } else {
+          await replyArea.click();
+          await page.keyboard.type(replyText, { delay: 20 });
+          await randomDelay(page, 500, 1000);
 
-        await replyArea.click();
-        await page.keyboard.type(replyText, { delay: 20 });
-        await randomDelay(page, 500, 1000);
-
-        let submitted = false;
-        const submitSelectors = [
-          'button[data-testid="tweetButtonInline"]',
-          'div[data-testid="tweetButtonInline"]',
-          'button[data-testid="tweetButton"]',
-          'div[data-testid="tweetButton"]',
-        ];
-        for (const sel of submitSelectors) {
-          const btn = page.locator(sel).first();
-          if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
-            await btn.click();
-            console.log(`Replied via ${sel}`);
-            submitted = true;
-            break;
+          let submitted = false;
+          const submitSelectors = [
+            'button[data-testid="tweetButtonInline"]',
+            'div[data-testid="tweetButtonInline"]',
+            'button[data-testid="tweetButton"]',
+            'div[data-testid="tweetButton"]',
+          ];
+          for (const sel of submitSelectors) {
+            const btn = page.locator(sel).first();
+            if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+              await btn.click();
+              console.log(`Replied via ${sel}`);
+              submitted = true;
+              break;
+            }
           }
-        }
-        if (!submitted) {
-          await page.keyboard.press('Control+Enter');
-          console.log(`Replied via Ctrl+Enter`);
-          submitted = true;
-        }
-        if (submitted) {
-          didSomething = true;
-          await page.waitForTimeout(3000);
+          if (!submitted) {
+            await page.keyboard.press('Control+Enter');
+            console.log(`Replied via Ctrl+Enter`);
+            submitted = true;
+          }
+          if (submitted) {
+            didSomething = true;
+            await page.waitForTimeout(3000);
+          }
         }
       }
 

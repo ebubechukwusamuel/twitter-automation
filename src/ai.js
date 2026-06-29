@@ -82,7 +82,7 @@ export async function generatePost(withImage = false) {
 
 Focus on these REAL topics:
 - What you're working on right now (Flowtrack, Kredo, Spyglass, or client work)
-- A real project you've shipped (name it)
+- A real project you've shipped (use its exact name: Flowtrack, Kredo, Spyglass, portfolio, Mazion Brand, Twitter Automation, LinkedIn Optimizer)
 - Behind-the-scenes of your actual workflow / tools
 - A design or dev challenge you actually solved
 - Freelancing lessons from your real experience
@@ -94,40 +94,53 @@ After the tweet, on a new line, write IMAGE_TYPE: followed by one of: project, c
 - mobile: general update, freelancing, personal
 - general: anything else
 
+Then on the next line, write MATCH: followed by the specific project name or keyword if you mentioned one (e.g., Flowtrack, Kredo, Spyglass, Twitter, Automation, Mazion, Brand). If no specific project is named, write MATCH: none.
+
 Example output:
 Been refactoring Flowtrack's real-time chat to use PeerJS instead of polling. Way fewer requests and messages appear instantly.
 IMAGE_TYPE: code
+MATCH: Flowtrack
 
 Example output:
 Just finished the Kredo invoice PDF generator. Download link, line items, Paystack payment link — all in one clean template.
 IMAGE_TYPE: project
+MATCH: Kredo
 
 Example output:
 Three years freelancing and I've learned: charge by value not by hour, always use contracts, and track every single minute. The tools matter less than the habits.
 IMAGE_TYPE: general
+MATCH: none
 
 Example output:
 Designed a full brand identity for a fintech client yesterday. Logo, type scale, color tokens, component library in Figma. Clean and systematic.
 IMAGE_TYPE: design
+MATCH: none
 
 Example output:
 Reorganized my entire VS Code workspace today. Project templates, consistent folder structure, shared ESLint/Prettier configs across all repos.
-IMAGE_TYPE: code`
+IMAGE_TYPE: code
+MATCH: none`
   } else {
     prompt = `${PERSONA}\n\nWrite one tweet (under 280 characters) about freelancing, design, or development from YOUR real experience. A genuine thought or lesson learned building projects like Flowtrack, Kredo, Spyglass, or doing client work. Keep it authentic — no made-up stories.`
   }
 
   const result = await generateWithRetry(prompt);
-  if (!result) return { text: null, imageType: null };
+  if (!result) return { text: null, imageType: null, match: null };
 
   const lines = result.trim().split('\n');
   let imageType = null;
+  let match = null;
   const typeLine = lines.find(l => l.startsWith('IMAGE_TYPE:'));
   if (typeLine) {
     imageType = typeLine.replace('IMAGE_TYPE:', '').trim().toLowerCase();
   }
-  const text = parseTweet(lines.filter(l => !l.startsWith('IMAGE_TYPE:')).join('\n'));
-  return { text, imageType };
+  const matchLine = lines.find(l => l.startsWith('MATCH:'));
+  if (matchLine) {
+    match = matchLine.replace('MATCH:', '').trim().toLowerCase();
+    if (match === 'none') match = null;
+  }
+  const text = parseTweet(lines.filter(l => !l.startsWith('IMAGE_TYPE:') && !l.startsWith('MATCH:')).join('\n'));
+  return { text, imageType, match };
 }
 
 export async function generateReply(tweetText, username) {

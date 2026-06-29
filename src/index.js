@@ -112,25 +112,48 @@ async function main() {
         if (existsSync(assetsDir)) {
           const files = readdirSync(assetsDir).filter(f => /\.(png|jpg|jpeg|gif|webp)$/i.test(f));
 
-          // Categorize images by filename prefix
-          const categories = {
-            project: files.filter(f => f.startsWith('project-') || f.startsWith('full-project-')),
-            code: files.filter(f => f.startsWith('code-')),
-            design: files.filter(f => f.startsWith('about-') || f.startsWith('full-about')),
-            mobile: files.filter(f => f.startsWith('mobile-')),
-            general: files.filter(f => !f.startsWith('project-') && !f.startsWith('full-project-') && !f.startsWith('code-') && !f.startsWith('about-') && !f.startsWith('full-about') && !f.startsWith('mobile-')),
-          };
+          const projectKeywords = [
+            { names: ['flowtrack', 'flowstarck'], file: 'project-flowtrack.png' },
+            { names: ['kredo'], file: 'project-kredo.png' },
+            { names: ['spyglass'], file: 'project-spyglass.png' },
+            { names: ['twitter', 'automation', 'bot'], file: 'project-twitter-automation.png' },
+            { names: ['mazion', 'brand identity'], file: 'project-mazion-brand.png' },
+          ];
 
-          let pool = files;
-          const wanted = post?.imageType;
-          if (wanted && categories[wanted]?.length > 0) {
-            pool = categories[wanted];
-            console.log(`AI suggested image type "${wanted}" — ${pool.length} matching images`);
-          } else {
-            console.log(`No match for "${wanted}", picking from all ${files.length} images`);
+          const textLower = (text || '').toLowerCase();
+          let matchedFile = null;
+          for (const entry of projectKeywords) {
+            if (entry.names.some(n => textLower.includes(n))) {
+              if (files.includes(entry.file)) {
+                matchedFile = entry.file;
+                console.log(`Matched project keyword "${entry.names.find(n => textLower.includes(n))}" → ${entry.file}`);
+              }
+              break;
+            }
           }
 
-          imagePath = resolve(assetsDir, pool[Math.floor(Math.random() * pool.length)]);
+          if (matchedFile) {
+            imagePath = resolve(assetsDir, matchedFile);
+          } else {
+            const categories = {
+              project: files.filter(f => f.startsWith('project-') || f.startsWith('full-project-')),
+              code: files.filter(f => f.startsWith('code-')),
+              design: files.filter(f => f.startsWith('about-') || f.startsWith('full-about')),
+              mobile: files.filter(f => f.startsWith('mobile-')),
+              general: files.filter(f => !f.startsWith('project-') && !f.startsWith('full-project-') && !f.startsWith('code-') && !f.startsWith('about-') && !f.startsWith('full-about') && !f.startsWith('mobile-')),
+            };
+
+            let pool = files;
+            const wanted = post?.imageType;
+            if (wanted && categories[wanted]?.length > 0) {
+              pool = categories[wanted];
+              console.log(`AI suggested image type "${wanted}" — ${pool.length} matching images`);
+            } else {
+              console.log(`No match for "${wanted}", picking from all ${files.length} images`);
+            }
+
+            imagePath = resolve(assetsDir, pool[Math.floor(Math.random() * pool.length)]);
+          }
           console.log('Attaching image:', imagePath);
         } else {
           console.log('No images in assets/ to attach — posting text-only');

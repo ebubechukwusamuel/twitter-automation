@@ -545,6 +545,175 @@ async function engageByAccounts(page, accounts, state) {
   return engaged;
 }
 
+export async function replyToMentions(context, page) {
+  const state = loadState();
+  if (!state.repliedTo) state.repliedTo = [];
+  const username = process.env.TWITTER_USERNAME?.replace('@', '');
+
+  let replied = 0;
+
+  try {
+    // Step 1: check notifications for recent mentions
+    console.log('Checking notifications for mentions...');
+    await page.goto(`${BASE}/notifications`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(5000);
+
+    let tweets = page.locator('article[data-testid="tweet"]');
+    let count = await tweets.count();
+
+    for (let i = 0; i < count && replied < 3; i++) {
+      const tweet = tweets.nth(i);
+      replied += await replyToSingleTweet(page, tweet, state);
+    }
+  } catch (err) {
+    console.error('replyToMentions notifications step failed:', err.message);
+  }
+
+  try {
+    // Step 2: go to profile to catch replies on old tweets
+    console.log('Checking profile for tweet replies...');
+    await page.goto(`${BASE}/${username}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(5000);
+
+    const ourTweets = page.locator('article[data-testid="tweet"]');
+    const ourCount = await ourTweets.count();
+    console.log(`Found ${ourCount} of our tweets on profile`);
+
+    for (let i = 0; i < ourCount && replied < 5; i++) {
+      const tweet = ourTweets.nth(i);
+      const tweetLink = await tweet.locator('a[href*="/status/"]').first().getAttribute('href').catch(() => null);
+      const tweetId = tweetLink?.split('/status/')[1]?.split('?')[0];
+      if (!tweetId) continue;
+
+      // Check if this tweet has replies
+      const replyCountEl = tweet.locator('button[data-testid="reply"]');
+      if (!(await replyCountEl.isVisible({ timeout: 1500 }).catch(() => false))) continue;
+
+      // Click the tweet to open it (so replies are visible)
+      await tweet.locator('a[href*="/status/"]').first().click();
+      await page.waitForTimeout(3000);
+
+      // Check for replies in the tweet detail view
+      const replies = page.locator('article[data-testid="tweet"]');
+      const replyCount = await replies.count();
+
+      for (let j = 0; j < replyCount && replied < 5; j++) {
+        const replyTweet = replies.nth(j);
+        const replyLink = await replyTweet.locator('a[href*="/status/"]').first().getAttribute('href').catch(() => null);
+        const replyId = replyLink?.split('/status/')[1]?.split('?')[0];
+        if (!replyId || state.repliedTo.includes(replyId)) continue;
+
+        const replyTextEl = replyTweet.locator('div[data-testid="tweetText"]');
+        const replyText = (await replyTextEl.innerText().catch(() => '')) || '';
+        if (!replyText || !isReadableTweet(replyText)) continue;
+
+        // Check if it's a reply to our tweet (has username mention and is from someone else)
+        const replyAuthorEl = replyTweet.locator('div[data-testid="User-Name"] a').first();
+        const replyAuthor = await replyAuthorEl.getAttribute('href').catch(() => '');
+        if (!replyAuthor || replyAuthor.includes(username)) continue; // skip our own replies
+
+        console.log(`Reply on our tweet: ${replyText.substring(0, 80)}...`);
+
+        const replyBtn = replyTweet.locator('button[data-testid="reply"]');
+        if (!(await replyBtn.isVisible({ timeout: 2000 }).catch(() => false))) continue;
+
+        await replyBtn.click();
+        await randomDelay(page, 1500, 2500);
+
+        replied += await submitReplyToAI(page, replyText, state, replyId);
+        await page.waitForTimeout(2000);
+
+        // Close any modals
+        for (let attempts = 0; attempts < 3; attempts++) {
+          const closeBtn = page.locator('button[aria-label="Close"]');
+          if (await closeBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+            await closeBtn.click();
+            await page.waitForTimeout(500);
+          }
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(500);
+        }
+      }
+
+      // Go back to profile
+      await page.goBack();
+      await page.waitForTimeout(3000);
+    }
+  } catch (err) {
+    console.error('replyToMentions profile step failed:', err.message);
+  }
+
+  saveState(state);
+  console.log(`Replied to ${replied} mentions total`);
+  return replied;
+}
+
+async function replyToSingleTweet(page, tweet, state) {
+  const tweetLink = await tweet.locator('a[href*="/status/"]').first().getAttribute('href').catch(() => null);
+  const tweetId = tweetLink?.split('/status/')[1]?.split('?')[0];
+  if (!tweetId || state.repliedTo.includes(tweetId)) return 0;
+
+  const tweetTextEl = tweet.locator('div[data-testid="tweetText"]');
+  const tweetText = (await tweetTextEl.innerText().catch(() => '')) || '';
+
+  if (!isReadableTweet(tweetText)) return 0;
+
+  console.log(`Mention: ${tweetText.substring(0, 80)}...`);
+
+  const replyBtn = tweet.locator('button[data-testid="reply"]');
+  if (!(await replyBtn.isVisible({ timeout: 2000 }).catch(() => false))) return 0;
+
+  await replyBtn.click();
+  await randomDelay(page, 1500, 2500);
+
+  return await submitReplyToAI(page, tweetText, state, tweetId);
+}
+
+async function submitReplyToAI(page, tweetText, state, tweetId) {
+  const replyArea = page.locator('div[data-testid="tweetTextarea_0"]');
+  if (!(await replyArea.isVisible({ timeout: 3000 }).catch(() => false))) return 0;
+
+  const { generateReply } = await import('./ai.js');
+  const replyText = await generateReply(tweetText, 'user');
+
+  if (!replyText) {
+    console.log(`Couldn't generate reply — skipping`);
+  } else {
+    await replyArea.click();
+    await page.keyboard.type(replyText, { delay: 20 });
+    await randomDelay(page, 800, 1500);
+
+    let submitted = false;
+    const submitSelectors = [
+      'button[data-testid="tweetButtonInline"]',
+      'div[data-testid="tweetButtonInline"]',
+      'button[data-testid="tweetButton"]',
+    ];
+    for (const sel of submitSelectors) {
+      const btn = page.locator(sel).first();
+      if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await btn.click();
+        submitted = true;
+        break;
+      }
+    }
+    if (!submitted) {
+      await page.keyboard.press('Control+Enter');
+      submitted = true;
+    }
+
+    if (submitted) {
+      state.repliedTo.push(tweetId);
+      await page.waitForTimeout(3000);
+      console.log(`Replied to mention: ${tweetId}`);
+      return 1;
+    }
+  }
+
+  state.repliedTo.push(tweetId);
+  return 0;
+}
+
 export async function engage(context, page, keywords, targetAccounts) {
   try {
     const state = loadState();

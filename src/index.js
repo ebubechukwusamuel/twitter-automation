@@ -1,4 +1,4 @@
-import { createSession, login, postTweet, ensureLoggedIn, engage } from './browser.js';
+import { createSession, login, postTweet, ensureLoggedIn, engage, replyToMentions } from './browser.js';
 import { generatePost, getFallbackTweet } from './ai.js';
 import { existsSync, readFileSync, writeFileSync, readdirSync } from 'fs';
 import { resolve } from 'path';
@@ -170,6 +170,9 @@ async function main() {
       state.lastEngage = new Date().toISOString();
       writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
     }
+
+    await replyToMentions(context, page);
+    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
 
     console.log('Done');
   } catch (err) {

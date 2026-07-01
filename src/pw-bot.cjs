@@ -262,6 +262,109 @@ run().catch(e => { console.error('Engage failed:', e.message); });
     writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   }
 
+  // Cleanup duplicate replies (one-time)
+  if (!state.cleanupDone) {
+    console.log('Cleaning up duplicate replies...');
+    const cleanupScript = `
+const fs = require('node:fs');
+async function run() {
+  let p = context.pages().find(x => x.url().includes('x.com'));
+  if (!p) { p = context.pages().find(x => x.url() === 'about:blank') ?? (await context.newPage()); await p.goto('${BASE}', { waitUntil: 'domcontentloaded', timeout: 30000 }); }
+
+  await p.goto('${BASE}/ebubechukwu_sam', { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await new Promise(r => setTimeout(r, 5000));
+
+  // Scroll to load more tweets
+  for (let s = 0; s < 8; s++) { await p.evaluate(() => window.scrollBy(0, 800)); await new Promise(r => setTimeout(r, 2000)); }
+
+  const allTweets = p.locator('article[data-testid="tweet"]');
+  const tweetCount = await allTweets.count();
+  console.log('Profile tweets loaded:', tweetCount);
+
+  // Group bot's replies by target user
+  const byTarget = {};
+
+  for (let i = 0; i < tweetCount; i++) {
+    const tw = allTweets.nth(i);
+
+    // Check if this is a reply from the bot
+    const isReply = await tw.locator('[data-testid="reply-indicator"]').isVisible({ timeout: 500 }).catch(() => false);
+    if (!isReply) continue;
+
+    const replyToText = await tw.locator('span:has-text("Replying to")').innerText().catch(() => '');
+    const targetMatch = replyToText.match(/@(\\w+)/);
+    if (!targetMatch || targetMatch[1] === 'ebubechukwu_sam') continue;
+
+    const target = targetMatch[1];
+    const link = await tw.locator('a[href*="/status/"]').first().getAttribute('href').catch(() => '');
+    const tid = link?.split('/status/')[1]?.split('?')[0];
+    if (!tid) continue;
+
+    if (!byTarget[target]) byTarget[target] = [];
+    byTarget[target].push({ tweetId: tid, index: i });
+    console.log('Reply to @' + target + ': ' + tid);
+  }
+
+  // Load state
+  const statePath = '${STATE_FILE.replace(/\\/g, '/')}';
+  const state = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+  if (!state.repliedUsers) state.repliedUsers = [];
+  let deleted = 0;
+
+  // Delete duplicate replies — keep first, delete rest
+  for (const [target, replies] of Object.entries(byTarget)) {
+    if (replies.length <= 1) continue;
+    console.log('@' + target + ' has ' + replies.length + ' replies, keeping 1...');
+
+    // Add target to repliedUsers so we never reply again
+    if (!state.repliedUsers.includes(target)) state.repliedUsers.push(target);
+
+    // Delete extras (keep replies[0], delete replies[1..n])
+    for (let k = 1; k < replies.length; k++) {
+      const { tweetId } = replies[k];
+      console.log('Deleting reply to @' + target + ': ' + tweetId);
+
+      // Navigate to the tweet
+      await p.goto('${BASE}/ebubechukwu_sam/status/' + tweetId, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await new Promise(r => setTimeout(r, 3000));
+
+      // Click more menu
+      const moreBtn = p.locator('button[data-testid="caret"]').first();
+      if (await moreBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await moreBtn.click();
+        await new Promise(r => setTimeout(r, 1500));
+
+        // Click Delete
+        const deleteBtn = p.locator('button[data-testid="delete"]');
+        if (await deleteBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await deleteBtn.click();
+          await new Promise(r => setTimeout(r, 1500));
+
+          // Confirm
+          const confirmBtn = p.locator('button[data-testid="confirmationSheetConfirm"]');
+          if (await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await confirmBtn.click();
+            await new Promise(r => setTimeout(r, 2000));
+            deleted++;
+            console.log('Deleted reply to @' + target + ': ' + tweetId);
+          }
+        }
+      }
+    }
+  }
+
+  state.cleanupDone = true;
+  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  console.log('Deleted ' + deleted + ' duplicate replies');
+}
+run().catch(e => { console.error('Cleanup failed:', e.message); });
+`;
+    const cleanupOutput = pw(cleanupScript);
+    console.log('Cleanup output:', cleanupOutput.trim());
+    state.cleanupDone = true;
+    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  }
+
   // Reply to mentions
   console.log('Checking mentions...');
   const replyScript = `

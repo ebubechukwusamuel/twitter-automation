@@ -2,3 +2,13 @@
 node_modules/
 
 auth.json
+state.json
+
+scripts/_pw_*.js
+scripts/_pw-run.js
+scripts/debug-login.js
+scripts/dump-page.js
+scripts/save-auth.js
+scripts/test-login.js
+scripts/check-replies.js
+scripts/count-tweets.js

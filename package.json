@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/pw-bot.cjs"
   },
   "dependencies": {
     "groq-sdk": "^1.3.0",

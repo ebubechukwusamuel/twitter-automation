@@ -545,9 +545,117 @@ async function engageByAccounts(page, accounts, state) {
   return engaged;
 }
 
+async function getTweetAuthor(page, tweet) {
+  const authorEl = tweet.locator('div[data-testid="User-Name"] a').first();
+  const href = await authorEl.getAttribute('href').catch(() => '');
+  return href?.replace('/', '')?.replace('@', '') || '';
+}
+
+export async function cleanupDuplicateReplies(context, page) {
+  const state = loadState();
+  if (!state.repliedUsers) state.repliedUsers = [];
+  const username = process.env.TWITTER_USERNAME?.replace('@', '');
+  let deleted = 0;
+
+  try {
+    console.log('Checking for duplicate replies to clean up...');
+    await page.goto(`${BASE}/${username}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(5000);
+
+    // Scroll to load more tweets
+    for (let s = 0; s < 5; s++) {
+      await page.evaluate(() => window.scrollBy(0, 800));
+      await page.waitForTimeout(2000);
+    }
+
+    const allTweets = page.locator('article[data-testid="tweet"]');
+    const tweetCount = await allTweets.count();
+    console.log(`Found ${tweetCount} tweets on profile`);
+
+    // Collect bot's reply tweets grouped by target user
+    const byTarget = {};
+
+    for (let i = 0; i < tweetCount; i++) {
+      const tweet = allTweets.nth(i);
+
+      // Only process tweets that are replies from the bot
+      const isReply = await tweet.locator('div[data-testid="reply-indicator"]').isVisible({ timeout: 500 }).catch(() => false);
+      if (!isReply) continue;
+
+      // Extract who this reply was to
+      const replyToText = await tweet.locator('span:has-text("Replying to")').innerText().catch(() => '');
+      const targetMatch = replyToText.match(/@(\w+)/);
+      if (!targetMatch) continue;
+
+      const targetUser = targetMatch[1];
+      const tweetLink = await tweet.locator('a[href*="/status/"]').first().getAttribute('href').catch(() => null);
+      const tweetId = tweetLink?.split('/status/')[1]?.split('?')[0];
+      if (!tweetId) continue;
+
+      if (!byTarget[targetUser]) byTarget[targetUser] = [];
+      byTarget[targetUser].push({ tweet, tweetId, index: i });
+    }
+
+    // Delete duplicates — keep the first (oldest), delete the rest
+    for (const [target, replies] of Object.entries(byTarget)) {
+      if (replies.length <= 1) continue;
+      console.log(`Found ${replies.length} replies to @${target}, deleting extras...`);
+
+      // Keep first reply, delete the rest
+      for (let k = 1; k < replies.length; k++) {
+        const { tweetId } = replies[k];
+        // Click the tweet to open it
+        await replies[k].tweet.locator('a[href*="/status/"]').first().click();
+        await page.waitForTimeout(3000);
+
+        // Open the menu
+        const moreBtn = page.locator('button[data-testid="caret"]').first();
+        if (await moreBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await moreBtn.click();
+          await page.waitForTimeout(1500);
+
+          // Click Delete
+          const deleteBtn = page.locator('button[data-testid="delete"]');
+          if (await deleteBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await deleteBtn.click();
+            await page.waitForTimeout(1500);
+
+            // Confirm deletion
+            const confirmBtn = page.locator('button[data-testid="confirmationSheetConfirm"]');
+            if (await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+              await confirmBtn.click();
+              await page.waitForTimeout(2000);
+              deleted++;
+              console.log(`Deleted duplicate reply to @${target}: ${tweetId}`);
+            }
+          }
+        }
+
+        await page.goBack();
+        await page.waitForTimeout(3000);
+      }
+    }
+
+    // Add users we've replied to into repliedUsers if not already there
+    for (const target of Object.keys(byTarget)) {
+      if (byTarget[target].length > 0 && !state.repliedUsers.includes(target)) {
+        state.repliedUsers.push(target);
+      }
+    }
+
+    saveState(state);
+    console.log(`Cleaned up ${deleted} duplicate replies`);
+  } catch (err) {
+    console.error('cleanupDuplicateReplies failed:', err.message);
+  }
+
+  return deleted;
+}
+
 export async function replyToMentions(context, page) {
   const state = loadState();
   if (!state.repliedTo) state.repliedTo = [];
+  if (!state.repliedUsers) state.repliedUsers = [];
   const username = process.env.TWITTER_USERNAME?.replace('@', '');
 
   let replied = 0;
@@ -563,7 +671,7 @@ export async function replyToMentions(context, page) {
 
     for (let i = 0; i < count && replied < 3; i++) {
       const tweet = tweets.nth(i);
-      replied += await replyToSingleTweet(page, tweet, state);
+      replied += await replyToSingleTweet(page, tweet, state, username);
     }
   } catch (err) {
     console.error('replyToMentions notifications step failed:', err.message);
@@ -603,16 +711,22 @@ export async function replyToMentions(context, page) {
         const replyId = replyLink?.split('/status/')[1]?.split('?')[0];
         if (!replyId || state.repliedTo.includes(replyId)) continue;
 
+        // Check if it's from someone else
+        const author = await getTweetAuthor(page, replyTweet);
+        if (!author || author === username) continue;
+
+        // Skip if already replied to this user before
+        if (state.repliedUsers.includes(author)) {
+          console.log(`Already replied to @${author} before — skipping`);
+          state.repliedTo.push(replyId);
+          continue;
+        }
+
         const replyTextEl = replyTweet.locator('div[data-testid="tweetText"]');
         const replyText = (await replyTextEl.innerText().catch(() => '')) || '';
         if (!replyText || !isReadableTweet(replyText)) continue;
 
-        // Check if it's a reply to our tweet (has username mention and is from someone else)
-        const replyAuthorEl = replyTweet.locator('div[data-testid="User-Name"] a').first();
-        const replyAuthor = await replyAuthorEl.getAttribute('href').catch(() => '');
-        if (!replyAuthor || replyAuthor.includes(username)) continue; // skip our own replies
-
-        console.log(`Reply on our tweet: ${replyText.substring(0, 80)}...`);
+        console.log(`Reply on our tweet from @${author}: ${replyText.substring(0, 80)}...`);
 
         const replyBtn = replyTweet.locator('button[data-testid="reply"]');
         if (!(await replyBtn.isVisible({ timeout: 2000 }).catch(() => false))) continue;
@@ -620,7 +734,7 @@ export async function replyToMentions(context, page) {
         await replyBtn.click();
         await randomDelay(page, 1500, 2500);
 
-        replied += await submitReplyToAI(page, replyText, state, replyId);
+        replied += await submitReplyToAI(page, replyText, state, replyId, author);
         await page.waitForTimeout(2000);
 
         // Close any modals
@@ -648,17 +762,27 @@ export async function replyToMentions(context, page) {
   return replied;
 }
 
-async function replyToSingleTweet(page, tweet, state) {
+async function replyToSingleTweet(page, tweet, state, username) {
   const tweetLink = await tweet.locator('a[href*="/status/"]').first().getAttribute('href').catch(() => null);
   const tweetId = tweetLink?.split('/status/')[1]?.split('?')[0];
   if (!tweetId || state.repliedTo.includes(tweetId)) return 0;
+
+  const author = await getTweetAuthor(page, tweet);
+  if (!author || author === username) return 0;
+
+  // Skip if already replied to this user before
+  if (state.repliedUsers.includes(author)) {
+    console.log(`Already replied to @${author} before — skipping`);
+    state.repliedTo.push(tweetId);
+    return 0;
+  }
 
   const tweetTextEl = tweet.locator('div[data-testid="tweetText"]');
   const tweetText = (await tweetTextEl.innerText().catch(() => '')) || '';
 
   if (!isReadableTweet(tweetText)) return 0;
 
-  console.log(`Mention: ${tweetText.substring(0, 80)}...`);
+  console.log(`Mention from @${author}: ${tweetText.substring(0, 80)}...`);
 
   const replyBtn = tweet.locator('button[data-testid="reply"]');
   if (!(await replyBtn.isVisible({ timeout: 2000 }).catch(() => false))) return 0;
@@ -666,10 +790,10 @@ async function replyToSingleTweet(page, tweet, state) {
   await replyBtn.click();
   await randomDelay(page, 1500, 2500);
 
-  return await submitReplyToAI(page, tweetText, state, tweetId);
+  return await submitReplyToAI(page, tweetText, state, tweetId, author);
 }
 
-async function submitReplyToAI(page, tweetText, state, tweetId) {
+async function submitReplyToAI(page, tweetText, state, tweetId, author) {
   const replyArea = page.locator('div[data-testid="tweetTextarea_0"]');
   if (!(await replyArea.isVisible({ timeout: 3000 }).catch(() => false))) return 0;
 
@@ -704,8 +828,9 @@ async function submitReplyToAI(page, tweetText, state, tweetId) {
 
     if (submitted) {
       state.repliedTo.push(tweetId);
+      if (author) state.repliedUsers.push(author);
       await page.waitForTimeout(3000);
-      console.log(`Replied to mention: ${tweetId}`);
+      console.log(`Replied to @${author}: ${tweetId}`);
       return 1;
     }
   }

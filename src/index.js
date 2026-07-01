@@ -1,4 +1,4 @@
-import { createSession, login, postTweet, ensureLoggedIn, engage, replyToMentions } from './browser.js';
+import { createSession, login, postTweet, ensureLoggedIn, engage, replyToMentions, cleanupDuplicateReplies } from './browser.js';
 import { generatePost, getFallbackTweet } from './ai.js';
 import { existsSync, readFileSync, writeFileSync, readdirSync } from 'fs';
 import { resolve } from 'path';
@@ -168,6 +168,12 @@ async function main() {
     if (shouldEngage && (mode === 'engage' || mode === 'both')) {
       await engage(context, page, ENGAGEMENT_KEYWORDS, TARGET_ACCOUNTS);
       state.lastEngage = new Date().toISOString();
+      writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+    }
+
+    if (!state.cleanupDone) {
+      await cleanupDuplicateReplies(context, page);
+      state.cleanupDone = true;
       writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
     }
 
